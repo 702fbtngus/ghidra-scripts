@@ -49,8 +49,8 @@ public class AdaptedPcodeEmulator extends GhidraScript {
     // public static long INTERESTING_ADDR = 0x8005ab42L;
     public static long INTERESTING_ADDR = 0x8002c4fcL;
     public static Integer INTERESTING_PHASE = null;
-    // public static int DETAIL_FROM = 74000;
     public static int DETAIL_UNTIL = 200000;
+    // public static int DETAIL_FROM = 66400;
     public static int DETAIL_FROM = DETAIL_UNTIL + 1;
     public static String[] PW_FILENAMES = {
         "main.log",
@@ -124,7 +124,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
     public void setRegisterValue(PcodeExecutorState<byte[]> state, String name, int value) {
         if (name == "PC") {
             currentThread.setCounter(toAddr(value));
-            currentFrame.finishAsBranch();
+            // currentFrame.finishAsBranch();
         }
         else {
             state.setVar(findRegisterByName(state, name), Util.intToByteArray(value));
@@ -187,6 +187,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
 
             setRegisterValue(state, "SP", sp);
             setRegisterValue(state, "SR", sr);
+            currentFrame.finishAsBranch();
 
             println("debu2g");
         }
@@ -239,6 +240,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
                     setRegisterValue(state, "PC", getRegisterValue(state, "LR"));
             }
             println("debu2g");
+            currentFrame.finishAsBranch();
             println("current counter: " + currentThread.getCounter());
         }
 
@@ -254,6 +256,12 @@ public class AdaptedPcodeEmulator extends GhidraScript {
                 currentFrame.finishAsBranch();
             }
             println("debu2g");
+        }
+
+        @PcodeUserop
+        public void doSleep(@OpState PcodeExecutorState<byte[]> state, int i) {
+            // TODO: Your logic, which I suppose could be NOP
+            println("did SLEEP");
         }
 
         // @PcodeUserop
@@ -346,6 +354,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
             // && addr.getOffset() != 0x8002e628L
             && !instr.getPrevious().getMnemonicString().equals("MFSR")
             && !instr.getPrevious().getMnemonicString().equals("MTSR")
+            && !instr.getPrevious().getMnemonicString().equals("STDSP")
         ) {
             println("adjusted", 1);
             currentInstructionCount--;
@@ -745,7 +754,8 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         
         while (currentInstructionCount < DETAIL_UNTIL) {
         // while (true) {
-            if (thread.getCounter().getOffset() == 0x8001db06l
+            if (thread.getCounter().getOffset() == 0x8001da8cl
+             || thread.getCounter().getOffset() == 0x8001db06l
              || thread.getCounter().getOffset() == 0x8001db0al
              || thread.getCounter().getOffset() == 0x8001db0el
              || thread.getCounter().getOffset() == 0x8001db12l
@@ -760,7 +770,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
                 currentPhase++;
                 currentInstructionCount = 0;
             }
-            println("P" + currentPhase + " #" + currentInstructionCount + ": PC = 0x" + thread.getCounter(), 1);
+            println("P" + currentPhase + " #" + currentInstructionCount + ": PC = " + thread.getCounter(), 1);
             if (executeInstr(thread) == -1) {
                 return;
             }
