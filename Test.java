@@ -376,10 +376,10 @@ public class Test extends GhidraScript {
         
         File outFile = new File("/Users/suhyeonryu/CubeSatPcode/ghidra_scripts/hooks.txt");
         pw = new PrintWriter(new FileWriter(outFile));
-        Util.println = (String s) -> {
-            println(s);
-            return null;
-        };
+        // Util.println = (String s) -> {
+        //     println(s);
+        //     return null;
+        // };
 
         PcodeEmulator emu = getInternalPcodeEmulator(currentProgram);
         var thread = emu.newThread("main");

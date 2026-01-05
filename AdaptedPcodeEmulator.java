@@ -736,7 +736,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         // Address entry = toAddr(0x80017158);
         thread.overrideCounter(entry);
         // println(currentProgram.getLanguage().getLanguageID().getIdAsString());
-        setRegisterValue(thread.getState(), "SR", 0x610000);
+        // setRegisterValue(thread.getState(), "SR", 0x610000);
 
         
         while (currentInstructionCount < DETAIL_UNTIL) {
