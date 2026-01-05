@@ -362,6 +362,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
             || mn.startsWith("RETE")
             || mn.startsWith("CPC")
             || mn.startsWith("BR")
+            || mn.startsWith("CSRF")
         ;
     }
 
@@ -737,6 +738,10 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         thread.overrideCounter(entry);
         // println(currentProgram.getLanguage().getLanguageID().getIdAsString());
         // setRegisterValue(thread.getState(), "SR", 0x610000);
+        var regAddrSpace = currentProgram.getAddressFactory().getAddressSpace("register");
+        // thread.getState().setVar(regAddrSpace, 0x0l, true, Util.intToByteArray(0x610000));
+        thread.getState().setVar(regAddrSpace, 0x0l, 4, true, Util.intToByteArray(0x410000));
+        // state.setVar(toAddr(addr), , true, Util.intToByteArray(value));
 
         
         while (currentInstructionCount < DETAIL_UNTIL) {
