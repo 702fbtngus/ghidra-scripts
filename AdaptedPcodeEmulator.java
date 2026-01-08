@@ -49,7 +49,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
     // public static long INTERESTING_ADDR = 0x8005ab42L;
     public static long INTERESTING_ADDR = 0x8002c4fcL;
     public static Integer INTERESTING_PHASE = null;
-    public static int DETAIL_UNTIL = 200000;
+    public static int DETAIL_UNTIL = 150000;
     // public static int DETAIL_FROM = 66400;
     public static int DETAIL_FROM = DETAIL_UNTIL + 1;
     public static String[] PW_FILENAMES = {
@@ -57,6 +57,9 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         "instr.log",
         "peripheral.log",
         "sysreg.log",
+        "userop.log",
+        "storeload.log",
+        "temp.log",
     };
 
     public List<Peripheral> peripherals;
@@ -70,11 +73,13 @@ public class AdaptedPcodeEmulator extends GhidraScript {
     
     public static java.util.function.Function<String, Void> println;
 
-    public boolean isDetail() {
+    public boolean isDetail(Address addr) {
         return (
             (currentInstructionCount > DETAIL_FROM
             && currentInstructionCount < DETAIL_UNTIL)
-            || currentPhase == 5
+            // || currentPhase == 5
+            || addr.getOffset() == 0x8002fda8l
+            || addr.getOffset() == 0x8002fb22l
         );
     }
         
@@ -86,6 +91,9 @@ public class AdaptedPcodeEmulator extends GhidraScript {
             if (i > 0 && pw.length > i) {
                 String s1 = s + " (P" + currentPhase + " #" + currentInstructionCount + ")";
                 pw[i].println(s1);
+            } else if (i == -1) {
+                String s1 = s + " (P" + currentPhase + " #" + currentInstructionCount + ")";
+                pw[pw.length - 1].println(s1);
             }
             super.println(s);
         }
@@ -117,7 +125,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
 
     public int loadFromAddr(PcodeExecutorState<byte[]> state, int addr) {
         int result = Util.byteArrayToInt(state.getVar(toAddr(addr), 4, true, Reason.INSPECT));
-        println(String.format("[loadFromAddr] *0x%08X = %d (0x%08X)", addr, result, result));
+        println(String.format("[loadFromAddr] *0x%08X = %d (0x%08X)", addr, result, result), 5);
         return Util.byteArrayToInt(state.getVar(toAddr(addr), 4, true, Reason.INSPECT));
     }
 
@@ -127,21 +135,74 @@ public class AdaptedPcodeEmulator extends GhidraScript {
             // currentFrame.finishAsBranch();
         }
         else {
-            state.setVar(findRegisterByName(state, name), Util.intToByteArray(value));
+            Register reg = findRegisterByName(state, name);
+            state.setVar(reg, Util.intToByteArray(value, reg.getNumBytes()));
         }
     }
 
 
     public void storeToAddr(PcodeExecutorState<byte[]> state, int addr, int value) {
+        println(String.format("[storeToAddr] *0x%08X <- %d (0x%08X)", addr, value, value), 5);
         state.setVar(toAddr(addr), 4, true, Util.intToByteArray(value));
+    }
+
+    public int nextInstructionAddr(int addr) {
+        return ((int) getInstructionAfter(toAddr(addr)).getAddress().getOffset());
+    }
+
+    public void int0(PcodeExecutorState<byte[]> state) {
+        // *(--SPSYS) = R8;
+        // *(--SPSYS) = R9;
+        // *(--SPSYS) = R10;
+        // *(--SPSYS) = R11;
+        // *(--SPSYS) = R12;
+        // *(--SPSYS) = LR;
+        // *(--SPSYS) = PC of first noncompleted instruction;
+        // *(--SPSYS) = SR;
+        // SR[R] = 0;
+        // SR[J] = 0;
+        // SR[M2:M0] = B’010;
+        // SR[I0M] = 1;
+        // PC = EVBA + INTERRUPT_VECTOR_OFFSET;
+        
+        int sp = getRegisterValue(state, "SP");
+
+        sp -= 4;
+        storeToAddr(state, sp, getRegisterValue(state, "R8"));
+        sp -= 4;
+        storeToAddr(state, sp, getRegisterValue(state, "R9"));
+        sp -= 4;
+        storeToAddr(state, sp, getRegisterValue(state, "R10"));
+        sp -= 4;
+        storeToAddr(state, sp, getRegisterValue(state, "R11"));
+        sp -= 4;
+        storeToAddr(state, sp, getRegisterValue(state, "R12"));
+        sp -= 4;
+        storeToAddr(state, sp, getRegisterValue(state, "LR"));
+        sp -= 4;
+        storeToAddr(state, sp, nextInstructionAddr(getRegisterValue(state, "PC")));
+        sp -= 4;
+        storeToAddr(state, sp, getRegisterValue(state, "SR"));
+
+        setRegisterValue(state, "SP", sp);
+
+        int sr = getRegisterValue(state, "SR");
+        sr &= ~(1 << 15);
+        sr &= ~(1 << 28);
+        sr &= ~(0b111 << 22);
+        sr |= 0b010 << 22;
+        sr |= 1 << 17;
+        setRegisterValue(state, "SR", sr);
+
+        setRegisterValue(state, "PC", 0x8005ab20);
+        currentFrame.finishAsBranch();
     }
 
     public class MyUseropLibrary extends AnnotatedPcodeUseropLibrary<byte[]> {
 
         @PcodeUserop
         public void CheckAndRestoreInterupt(@OpState PcodeExecutorState<byte[]> state) {
-            // TODO: Your logic, which I suppose could be NOP
-            println("debu1g");
+            println("CheckAndRestoreInterupt", 4);
 
             // SR ← *(SPSYS++)
             // PC ← *(SPSYS++)
@@ -156,17 +217,17 @@ public class AdaptedPcodeEmulator extends GhidraScript {
             // SREG[L] ← 0;
 
             int sp = getRegisterValue(state, "SP");
+            int sr = getRegisterValue(state, "SR");
             setRegisterValue(state, "SR", loadFromAddr(state, sp));
             sp += 4;
             setRegisterValue(state, "PC", loadFromAddr(state, sp));
             sp += 4;
 
-            int sr = getRegisterValue(state, "SR");
             switch ((sr >> 22) & 0x7) {
-                case 0x010:
-                case 0x011:
-                case 0x100:
-                case 0x101:
+                case 0b010:
+                case 0b011:
+                case 0b100:
+                case 0b101:
                     setRegisterValue(state, "LR", loadFromAddr(state, sp));
                     sp += 4;
                     setRegisterValue(state, "R12", loadFromAddr(state, sp));
@@ -179,28 +240,27 @@ public class AdaptedPcodeEmulator extends GhidraScript {
                     sp += 4;
                     setRegisterValue(state, "R8", loadFromAddr(state, sp));
                     sp += 4;
-                break;
+                    break;
                 default:
                     break;
             }
+
+            sr = getRegisterValue(state, "SR");
             sr &= ~(1 << 5);
 
             setRegisterValue(state, "SP", sp);
             setRegisterValue(state, "SR", sr);
             currentFrame.finishAsBranch();
-
-            println("debu2g");
         }
 
         @PcodeUserop
         public void CheckAndRestoreSupervisor(@OpState PcodeExecutorState<byte[]> state) {
-            // TODO: Your logic, which I suppose could be NOP
-            println("debu1g");
-            int sr = Util.byteArrayToInt(state.getVar(findRegisterByName(state, "SR"), Reason.INSPECT));
+            println("CheckAndRestoreSupervisor", 4);
+            int sr = getRegisterValue(state, "SR");
             int mode = (sr >> 22) & 0x7;
             int sp = getRegisterValue(state, "SP");
             switch (mode) {
-                case 0x000:
+                case 0b000:
                     // Privilege Exception Violation
 
                     // *(--SPSYS) = PC;
@@ -221,16 +281,17 @@ public class AdaptedPcodeEmulator extends GhidraScript {
                     sr = getRegisterValue(state, "SR");
                     sr &= ~(1 << 15);
                     sr &= ~(1 << 28);
-                    // sr &= ~(0b111 << 22);
-                    // sr |= 0b110 << 22;
+                    sr &= ~(0b111 << 22);
+                    sr |= 0b110 << 22;
                     sr |= 1 << 21;
                     sr |= 1 << 16;
                     setRegisterValue(state, "SR", sr);
 
+                    println("privilege exception violation!!!!");
                     setRegisterValue(state, "PC", 0x8005ab20);
 
                 break;
-                case 0x001:
+                case 0b001:
                     setRegisterValue(state, "SR", loadFromAddr(state, sp));
                     sp += 4;
                     setRegisterValue(state, "PC", loadFromAddr(state, sp));
@@ -239,29 +300,62 @@ public class AdaptedPcodeEmulator extends GhidraScript {
                 default:
                     setRegisterValue(state, "PC", getRegisterValue(state, "LR"));
             }
-            println("debu2g");
             currentFrame.finishAsBranch();
-            println("current counter: " + currentThread.getCounter());
         }
 
         @PcodeUserop
         public void SupervisorCallSetup(@OpState PcodeExecutorState<byte[]> state) {
-            // TODO: Your logic, which I suppose could be NOP
-            println("debu1g");
-            // state.setVar(findRegisterByName(state, "RSR_SUP"), Util.intToByteArray(0x80025094));
-            if (currentThread != null) {
-                currentThread.setCounter(toAddr(0x8005ab00));
+            println("SupervisorCallSetup", 4);
+            
+            int sr = getRegisterValue(state, "SR");
+            int mode = (sr >> 22) & 0x7;
+            println("mode: " + mode, 4);
+            switch (mode) {
+                case 0b000:
+                case 0b001:
+                    // *(--SPSYS) ← PC + 2;
+                    // *(--SPSYS) ← SR;
+                    // PC ← EVBA + 0x100;
+                    // SR[M2:M0] ← B’001;
+
+                    int sp = getRegisterValue(state, "SP");
+                    sp -= 4;
+                    storeToAddr(state, sp, nextInstructionAddr(getRegisterValue(state, "PC")));
+                    sp -= 4;
+                    storeToAddr(state, sp, sr);
+                    setRegisterValue(state, "SP", sp);
+
+                    sr &= ~(0b111 << 22);
+                    sr |= 0b001 << 22;
+                    setRegisterValue(state, "SR", sr);
+                    setRegisterValue(state, "PC", 0x8005ab00);
+                    
+                    break;
+                    
+                default:
+                    // LRCurrent Context ← PC + 2;
+                    // PC ← EVBA + 0x100;
+
+                    setRegisterValue(state, "LR", nextInstructionAddr(getRegisterValue(state, "PC")));
+                    setRegisterValue(state, "PC", 0x8005ab00);
+
+                    break;
             }
-            if (currentFrame != null) {
-                currentFrame.finishAsBranch();
-            }
-            println("debu2g");
+            currentFrame.finishAsBranch();
+
+            // if (currentThread != null) {
+            //     currentThread.setCounter(toAddr(0x8005ab00));
+            // }
+            // if (currentFrame != null) {
+            //     currentFrame.finishAsBranch();
+            // }
         }
 
         @PcodeUserop
         public void doSleep(@OpState PcodeExecutorState<byte[]> state, int i) {
             // TODO: Your logic, which I suppose could be NOP
-            println("did SLEEP");
+            println("doSleep", 4);
+            int0(state);
         }
 
         // @PcodeUserop
@@ -304,9 +398,13 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         return pcemu;
     }
 
-    
+    public void printPcodeOps(PcodeOp[] ops) {
+        for (int i = 0; (i < ops.length); i++) {
+            println("PcodeOp[" + i + "] = " + ops[i], -1);
+        }
+    }
 
-    public void printPcodeOp(PcodeThread thread) {
+    public void printCurrentPcodeOp(PcodeThread thread) {
         PcodeFrame frame = thread.getFrame();
         if (frame != null) {    
             var ops = frame.getCode();
@@ -372,6 +470,8 @@ public class AdaptedPcodeEmulator extends GhidraScript {
             || mn.startsWith("CPC")
             || mn.startsWith("BR")
             || mn.startsWith("CSRF")
+            || mn.startsWith("SLEEP")
+            || mn.startsWith("MOV")
         ;
     }
 
@@ -415,7 +515,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
                 if (o instanceof Register) {
                     Register reg = (Register) o;
                     byte[] v = thread.getState().getVar(reg, Reason.INSPECT);
-                    println("  " + reg.getName() + " = " + bytesToHex(v));
+                    println("  " + reg.getName() + " (" + reg.getAddress()  + ") = " + bytesToHex(v));
                 }
             }
         }
@@ -539,7 +639,8 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         String mn = PcodeOp.getMnemonic(op.getOpcode());
         boolean isCopy = mn.equals("COPY");
 
-        if (isCopy && a <= 1020) {
+        if (isCopy && a <= 1020 && node.isRegister()) {
+        // if (isCopy && a <= 1020) {
         // if (isCopy && a == 0x108) {
             Integer value = null;
             if (a == 0) {
@@ -587,17 +688,8 @@ public class AdaptedPcodeEmulator extends GhidraScript {
     public int executeInstr(PcodeThread<byte[]> thread) throws AddressFormatException {
         Address addr = thread.getCounter();
         Instruction instr = getInstructionAt(addr);
-        // Function func = getFunctionContaining(addr);
-        // println("Function: " + func.toString());
-        // if (!currentFunctionName.equals(func.toString())) {
-        boolean detail = isDetail();
-        // println("Instruction address: " + addr);
-        // println("Instruction mnemonic: " + instr.getMnemonicString());
-
-        // Address srAddr = addr.getAddress("const:0");
-        // Address srAddr = new GenericAddress(0x0l, new GenericAddressSpace());
-        // println("Varnode: " + sr);
-        // println("  SR = " + Util.byteArrayToInt(thread.getState().getVar(sr, Reason.INSPECT)));
+        String mn = instr.getMnemonicString();
+        boolean detail = isDetail(addr);
 
         if (detail) {
             printAllRegisters(thread);
@@ -606,6 +698,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         // if (addr.getOffset() == 0x8002E340L) {
         //     return -1;
         // }
+
         adjustInstructionCount(instr, addr);
         if (isInterestingInstr(instr, addr)) {
             thread.stepPcodeOp();
@@ -616,14 +709,29 @@ public class AdaptedPcodeEmulator extends GhidraScript {
                 println("Executing frame of size " + ops.size());
                 // for (int i = 0; i < ops.size(); i++) {
                 while (!frame.isFinished()) {
-                    PcodeOp op = ops.get(frame.index());
+                    int id = frame.index();
+                    PcodeOp op = ops.get(id);
                     boolean interesting = isInterestingPcodeOp(op, addr);
                     // if (interesting) {
-                        printPcodeOp(thread);
+                        printCurrentPcodeOp(thread);
                     // }
                     Varnode[] inputs = op.getInputs();
                     Varnode output = op.getOutput();
                     thread.stepPcodeOp();
+                    
+                    if (mn.equals("CPC") && id == 6 && instr.getNumOperands() == 1) {
+                        PcodeExecutorState<byte[]> state = thread.getState();
+                        Varnode rd = ops.get(1).getInput(0);
+                        Varnode res = ops.get(1).getOutput();
+                        byte[] rdb = thread.getState().getVar(rd, Reason.INSPECT);
+                        Integer rdv = Util.byteArrayToInt(rdb);
+                        byte[] resb = state.getVar(res, Reason.INSPECT);
+                        Integer resv = Util.byteArrayToInt(resb);
+                        if (rdv >= 0 && resv < 0) {
+                            setRegisterValue(state, "C", 1);
+                        }
+                    }
+
                     if (interesting) {
                         byte[][] result = null;
                         if (inputs.length > 0) {
@@ -636,27 +744,20 @@ public class AdaptedPcodeEmulator extends GhidraScript {
                                 println("Input " + j + ": " + bytesToHex(b));
                             }
                         }
+
                         if (result != null && result.length > 1) {
                             Address memaddr = byteArrayToAddress(result[1]);
                             if (hookMemoryAccess(memaddr, op, thread) == -1) {
                                 return -1;
                             }
                         }
+
                         for (Varnode input : inputs) {
                             if (hookSystemRegisterAccess(input, op, thread) == -1) {
                                 return -1;
                             }
                         }
-                        // if (output != null) {
-                        //     if (hookSystemRegisterAccess(output, op, thread) == -1) {
-                        //         return -1;
-                        //     }
-                        // }
-                        // if (inputs != null && inputs.length > 0) {
-                        //     if (hookSystemRegisterAccess(inputs[0], op, thread) == -1) {
-                        //         return -1;
-                        //     }
-                        // }
+                        
                         if (output != null) {
                             var outputv = thread.getState().getVar(output, Reason.INSPECT);
                             println("Output: " + bytesToHex(outputv));
@@ -679,6 +780,9 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         return 0;
     }
 
+    // void handleInterrupt() {
+        
+    // }
 
     @Override
     protected void run() throws Exception {
@@ -775,6 +879,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
                 return;
             }
             currentInstructionCount++;
+            // handleInterrupt();
         }
         
         
