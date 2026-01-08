@@ -105,6 +105,52 @@ public class AdaptedPcodeEmulator extends GhidraScript {
     }
 
 
+    public enum RegisterName {
+        SR  (0x0000l, 4),
+        R0  (0x1000l, 4),
+        C   (0x1100l, 1),
+        Z   (0x1101l, 1),
+        N   (0x1102l, 1),
+        V   (0x1103l, 1),
+        R1  (0x1004l, 4),
+        R2  (0x1008l, 4),
+        R3  (0x100cl, 4),
+        R4  (0x1010l, 4),
+        R5  (0x1014l, 4),
+        R6  (0x1018l, 4),
+        R7  (0x101cl, 4),
+        R8  (0x1020l, 4),
+        R9  (0x1024l, 4),
+        R10 (0x1028l, 4),
+        R11 (0x102cl, 4),
+        R12 (0x1030l, 4),
+        SP  (0x1034l, 4),
+        LR  (0x1038l, 4),
+        PC  (0x103cl, 4);
+    
+        private final long memoryAddress;
+        private final int numBytes;
+    
+        RegisterName (long memoryAddress, int numBytes) {
+            this.memoryAddress = memoryAddress;
+            this.numBytes = numBytes;
+        }
+    
+        public long memoryAddress() {
+            return memoryAddress;
+        }
+    
+        public int numBytes() {
+            return numBytes;
+        }
+    
+        public static RegisterName fromMnemonic(String mnemonic) {
+            return RegisterName.valueOf(mnemonic);
+        }
+    }
+    
+
+
     public Register findRegisterByName(PcodeExecutorState<byte[]> state, String name) {
         for (Register reg : state.getRegisterValues().keySet()) {
             // println("regname: " + reg.getName());
@@ -116,34 +162,53 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         return null;
     }
 
-    public int getRegisterValue(PcodeExecutorState<byte[]> state, String name) {
-        if (name == "PC") {
-            return ((int) currentThread.getCounter().getOffset());
-        }
-        return Util.byteArrayToInt(state.getVar(findRegisterByName(state, name), Reason.INSPECT));
-    }
-
     public int loadFromAddr(PcodeExecutorState<byte[]> state, int addr) {
         int result = Util.byteArrayToInt(state.getVar(toAddr(addr), 4, true, Reason.INSPECT));
         println(String.format("[loadFromAddr] *0x%08X = %d (0x%08X)", addr, result, result), 5);
         return Util.byteArrayToInt(state.getVar(toAddr(addr), 4, true, Reason.INSPECT));
     }
 
-    public void setRegisterValue(PcodeExecutorState<byte[]> state, String name, int value) {
-        if (name == "PC") {
-            currentThread.setCounter(toAddr(value));
-            // currentFrame.finishAsBranch();
-        }
-        else {
-            Register reg = findRegisterByName(state, name);
-            state.setVar(reg, Util.intToByteArray(value, reg.getNumBytes()));
-        }
-    }
-
 
     public void storeToAddr(PcodeExecutorState<byte[]> state, int addr, int value) {
         println(String.format("[storeToAddr] *0x%08X <- %d (0x%08X)", addr, value, value), 5);
         state.setVar(toAddr(addr), 4, true, Util.intToByteArray(value));
+    }
+
+    public int getRegisterValue(PcodeExecutorState<byte[]> state, String name) {
+        RegisterName regname = RegisterName.fromMnemonic(name);
+        long regaddr = regname.memoryAddress();
+        int numbytes = regname.numBytes();
+        var regAddrSpace = currentProgram.getAddressFactory().getAddressSpace("register");
+        return Util.byteArrayToInt(state.getVar(regAddrSpace, regaddr, numbytes, true, Reason.INSPECT));
+        
+        // var regAddrSpace = currentProgram.getAddressFactory().getAddressSpace("register");
+        // state.setVar(regAddrSpace, regaddr, numbytes, true, Util.intToByteArray(value, numbytes));
+        // if (name == "PC") {
+        //     return ((int) currentThread.getCounter().getOffset());
+        // }
+        // return Util.byteArrayToInt(state.getVar(findRegisterByName(state, name), Reason.INSPECT));
+    }
+
+    public void finishFrame(PcodeExecutorState<byte[]> state) {
+        currentThread.setCounter(toAddr(getRegisterValue(state, "PC")));
+        currentFrame.finishAsBranch();
+    }
+
+    public void setRegisterValue(PcodeExecutorState<byte[]> state, String name, int value) {
+        RegisterName regname = RegisterName.fromMnemonic(name);
+        long regaddr = regname.memoryAddress();
+        int numbytes = regname.numBytes();
+        var regAddrSpace = currentProgram.getAddressFactory().getAddressSpace("register");
+        state.setVar(regAddrSpace, regaddr, numbytes, true, Util.intToByteArray(value, numbytes));
+
+        // if (name == "PC") {
+        //     currentThread.setCounter(toAddr(value));
+        //     // currentFrame.finishAsBranch();
+        // }
+        // else {
+        //     Register reg = findRegisterByName(state, name);
+        //     state.setVar(reg, Util.intToByteArray(value, reg.getNumBytes()));
+        // }
     }
 
     public int nextInstructionAddr(int addr) {
@@ -195,7 +260,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         setRegisterValue(state, "SR", sr);
 
         setRegisterValue(state, "PC", 0x8005ab20);
-        currentFrame.finishAsBranch();
+        finishFrame(state);
     }
 
     public class MyUseropLibrary extends AnnotatedPcodeUseropLibrary<byte[]> {
@@ -250,7 +315,8 @@ public class AdaptedPcodeEmulator extends GhidraScript {
 
             setRegisterValue(state, "SP", sp);
             setRegisterValue(state, "SR", sr);
-            currentFrame.finishAsBranch();
+            // currentFrame.finishAsBranch();
+            finishFrame(state);
         }
 
         @PcodeUserop
@@ -300,7 +366,8 @@ public class AdaptedPcodeEmulator extends GhidraScript {
                 default:
                     setRegisterValue(state, "PC", getRegisterValue(state, "LR"));
             }
-            currentFrame.finishAsBranch();
+            // currentFrame.finishAsBranch();
+            finishFrame(state);
         }
 
         @PcodeUserop
@@ -341,7 +408,8 @@ public class AdaptedPcodeEmulator extends GhidraScript {
 
                     break;
             }
-            currentFrame.finishAsBranch();
+            // currentFrame.finishAsBranch();
+            finishFrame(state);
 
             // if (currentThread != null) {
             //     currentThread.setCounter(toAddr(0x8005ab00));
