@@ -857,12 +857,12 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         // 이 코드는 Ghidra Headless Analyzer나 Ghidra plugin 환경에서 실행해야 함.
         // Program currentProgram = ...; // Ghidra 환경에서 주입됨
         // File script = new File(getScriptDirectory(), "PopulateDataLMA.java");
-        runScript("PopulateDataLMA.java");
+        // runScript("PopulateDataLMA.java");
 
         pw = new PrintWriter[PW_FILENAMES.length];
         for (int i = 0; i < PW_FILENAMES.length; i++) {
             String fn = PW_FILENAMES[i];
-            File outFile = new File("/home/fbtngus/ghidra_scripts/log/" + fn);
+            File outFile = new File(getSourceFile().getParentFile().getAbsolutePath() + "/log/" + fn);
             pw[i] = new PrintWriter(new FileWriter(outFile));
         }
         
