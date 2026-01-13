@@ -70,6 +70,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
     public PrintWriter[] pw;
     public PcodeThread<byte[]> currentThread = null;
     public PcodeFrame currentFrame = null;
+    public boolean isBranch = false;
     
     public static java.util.function.Function<String, Void> println;
 
@@ -203,10 +204,11 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         var regAddrSpace = currentProgram.getAddressFactory().getAddressSpace("register");
         state.setVar(regAddrSpace, regaddr, numbytes, true, Util.intToByteArray(value, numbytes));
 
-        // if (name == "PC") {
-        //     currentThread.setCounter(toAddr(value));
-        //     // currentFrame.finishAsBranch();
-        // }
+        if (name == "PC") {
+            currentThread.setCounter(toAddr(value));
+            isBranch = true;
+            // currentFrame.finishAsBranch();
+        }
         // else {
         //     Register reg = findRegisterByName(state, name);
         //     state.setVar(reg, Util.intToByteArray(value, reg.getNumBytes()));
@@ -840,6 +842,10 @@ public class AdaptedPcodeEmulator extends GhidraScript {
                         //     return -1;
                         // }
                     }
+                }
+                if (isBranch) {
+                    currentFrame.finishAsBranch();
+                    isBranch = false;
                 }
                 thread.stepPcodeOp();
             }
