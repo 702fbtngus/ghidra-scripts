@@ -85,9 +85,9 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         
     public void println(String s, int i) {
         if (INTERESTING_PHASE == null || currentPhase == INTERESTING_PHASE) {
-            if (pw.length > 0) {
-                pw[0].println(s);
-            }
+            // if (pw.length > 0) {
+            //     System.out.println(s);
+            // }
             if (i > 0 && pw.length > i) {
                 String s1 = s + " (P" + currentPhase + " #" + currentInstructionCount + ")";
                 pw[i].println(s1);
@@ -95,7 +95,9 @@ public class AdaptedPcodeEmulator extends GhidraScript {
                 String s1 = s + " (P" + currentPhase + " #" + currentInstructionCount + ")";
                 pw[pw.length - 1].println(s1);
             }
-            super.println(s);
+            System.out.println(s);
+
+            // super.println(s);
         }
     }
 
@@ -860,7 +862,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         // runScript("PopulateDataLMA.java");
 
         pw = new PrintWriter[PW_FILENAMES.length];
-        for (int i = 0; i < PW_FILENAMES.length; i++) {
+        for (int i = 1; i < PW_FILENAMES.length; i++) {
             String fn = PW_FILENAMES[i];
             File outFile = new File(getSourceFile().getParentFile().getAbsolutePath() + "/log/" + fn);
             pw[i] = new PrintWriter(new FileWriter(outFile));
@@ -945,6 +947,9 @@ public class AdaptedPcodeEmulator extends GhidraScript {
                 currentInstructionCount = 0;
             }
             println("P" + currentPhase + " #" + currentInstructionCount + ": PC = " + thread.getCounter(), 1);
+            if (currentInstructionCount % 1000 == 0) {
+                System.err.println("P" + currentPhase + " #" + currentInstructionCount + ": PC = " + thread.getCounter());
+            }
             if (executeInstr(thread) == -1) {
                 return;
             }
