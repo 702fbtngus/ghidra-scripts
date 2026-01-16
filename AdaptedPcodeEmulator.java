@@ -48,8 +48,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
 
     // public static long INTERESTING_ADDR = 0x8005ab42L;
     public static long INTERESTING_ADDR = 0x8002c4fcL;
-    public static Integer INTERESTING_PHASE = null;
-    public static int DETAIL_UNTIL = 150000;
+    public static int DETAIL_UNTIL = 600000;
     // public static int DETAIL_FROM = 66400;
     public static int DETAIL_FROM = DETAIL_UNTIL + 1;
     public static String[] PW_FILENAMES = {
@@ -81,11 +80,19 @@ public class AdaptedPcodeEmulator extends GhidraScript {
             // || currentPhase == 5
             || addr.getOffset() == 0x8002fda8l
             || addr.getOffset() == 0x8002fb22l
+            || addr.getOffset() == 0x8002f980l
+        );
+    }
+
+    public boolean printerMask() {
+        return (
+            (currentPhase == 1)
+            // || (currentPhase == 1 && (currentInstructionCount > 500000 || currentInstructionCount < 10000))
         );
     }
         
     public void println(String s, int i) {
-        if (INTERESTING_PHASE == null || currentPhase == INTERESTING_PHASE) {
+        if (printerMask()) {
             // if (pw.length > 0) {
             //     System.out.println(s);
             // }
@@ -183,13 +190,11 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         int numbytes = regname.numBytes();
         var regAddrSpace = currentProgram.getAddressFactory().getAddressSpace("register");
         return Util.byteArrayToInt(state.getVar(regAddrSpace, regaddr, numbytes, true, Reason.INSPECT));
-        
-        // var regAddrSpace = currentProgram.getAddressFactory().getAddressSpace("register");
-        // state.setVar(regAddrSpace, regaddr, numbytes, true, Util.intToByteArray(value, numbytes));
-        // if (name == "PC") {
-        //     return ((int) currentThread.getCounter().getOffset());
-        // }
-        // return Util.byteArrayToInt(state.getVar(findRegisterByName(state, name), Reason.INSPECT));
+    }
+
+    public int getRAMValue(PcodeExecutorState<byte[]> state, int offset) {
+        var regAddrSpace = currentProgram.getAddressFactory().getAddressSpace("RAM");
+        return Util.byteArrayToInt(state.getVar(regAddrSpace, offset, 4, true, Reason.INSPECT));
     }
 
     public void finishFrame(PcodeExecutorState<byte[]> state) {
@@ -771,6 +776,10 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         //     return -1;
         // }
 
+        // if (mn.startsWith("ST")) {
+        //     println("instr: " + instr);
+        // }
+
         adjustInstructionCount(instr, addr);
         if (isInterestingInstr(instr, addr)) {
             thread.stepPcodeOp();
@@ -779,6 +788,21 @@ public class AdaptedPcodeEmulator extends GhidraScript {
                 currentFrame = frame;
                 var ops = frame.getCode();
                 println("Executing frame of size " + ops.size());
+
+                // if (mn.startsWith("ST.B")) {
+                //     // ops
+                //     PcodeExecutorState<byte[]> state = thread.getState();
+                //     Varnode rd = ops.get(1).getInput(0);
+                //     Varnode res = ops.get(1).getOutput();
+                //     byte[] rdb = thread.getState().getVar(rd, Reason.INSPECT);
+                //     Integer rdv = Util.byteArrayToInt(rdb);
+                //     byte[] resb = state.getVar(res, Reason.INSPECT);
+                //     Integer resv = Util.byteArrayToInt(resb);
+                //     if (rdv >= 0 && resv < 0) {
+                //         setRegisterValue(state, "C", 1);
+                //     }
+                // }
+
                 // for (int i = 0; i < ops.size(); i++) {
                 while (!frame.isFinished()) {
                     int id = frame.index();
@@ -936,8 +960,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         
         while (currentInstructionCount < DETAIL_UNTIL) {
         // while (true) {
-            if (thread.getCounter().getOffset() == 0x8001da8cl
-             || thread.getCounter().getOffset() == 0x8001db06l
+            if (thread.getCounter().getOffset() == 0x8001db06l
              || thread.getCounter().getOffset() == 0x8001db0al
              || thread.getCounter().getOffset() == 0x8001db0el
              || thread.getCounter().getOffset() == 0x8001db12l
