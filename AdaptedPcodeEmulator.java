@@ -870,18 +870,18 @@ public class AdaptedPcodeEmulator extends GhidraScript {
                     Varnode output = op.getOutput();
                     thread.stepPcodeOp();
                     
-                    if (mn.equals("CPC") && id == 6 && instr.getNumOperands() == 1) {
-                        PcodeExecutorState<byte[]> state = thread.getState();
-                        Varnode rd = ops.get(1).getInput(0);
-                        Varnode res = ops.get(1).getOutput();
-                        byte[] rdb = thread.getState().getVar(rd, Reason.INSPECT);
-                        Integer rdv = Util.byteArrayToInt(rdb);
-                        byte[] resb = state.getVar(res, Reason.INSPECT);
-                        Integer resv = Util.byteArrayToInt(resb);
-                        if (rdv >= 0 && resv < 0) {
-                            setRegisterValue(state, "C", 1);
-                        }
-                    }
+                    // if (mn.equals("CPC") && id == 6 && instr.getNumOperands() == 1) {
+                    //     PcodeExecutorState<byte[]> state = thread.getState();
+                    //     Varnode rd = ops.get(1).getInput(0);
+                    //     Varnode res = ops.get(1).getOutput();
+                    //     byte[] rdb = thread.getState().getVar(rd, Reason.INSPECT);
+                    //     Integer rdv = Util.byteArrayToInt(rdb);
+                    //     byte[] resb = state.getVar(res, Reason.INSPECT);
+                    //     Integer resv = Util.byteArrayToInt(resb);
+                    //     if (rdv >= 0 && resv < 0) {
+                    //         setRegisterValue(state, "C", 1);
+                    //     }
+                    // }
 
                     if (interesting) {
                         byte[][] result = null;
