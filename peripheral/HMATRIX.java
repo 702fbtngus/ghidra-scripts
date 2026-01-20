@@ -22,6 +22,9 @@ public class HMATRIX extends Peripheral {
         super(baseAddr, name);
         resetRegisters();
     }
+    
+    @Override
+    protected void link() {}
 
     private void resetRegisters() {
 

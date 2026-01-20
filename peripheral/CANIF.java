@@ -48,6 +48,9 @@ public class CANIF extends Peripheral {
     }
 
     @Override
+    protected void link() {}
+
+    @Override
     protected boolean onWrite(int ofs, int v) {
 
         switch (ofs) {

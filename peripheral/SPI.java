@@ -30,6 +30,9 @@ public class SPI extends Peripheral {
         FEATURES = 0;   // device-specific placeholder
         VERSION  = 0;   // device-specific placeholder
     }
+    
+    @Override
+    protected void link() {}
 
     @Override
     protected boolean onWrite(int ofs, int val) {

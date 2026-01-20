@@ -70,6 +70,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
     public PcodeThread<byte[]> currentThread = null;
     public PcodeFrame currentFrame = null;
     public boolean isBranch = false;
+    public INTC intc;
     
     public static java.util.function.Function<String, Void> println;
 
@@ -939,6 +940,8 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         new TC      ( 0xFFFF5800L, "TC1"     );
 
         peripherals = Peripheral.registry;
+        Peripheral.linkAllPeripherals();
+        intc = (INTC) Peripheral.findPeripheral("INTC");
         system_register = new SystemRegister();
 
 

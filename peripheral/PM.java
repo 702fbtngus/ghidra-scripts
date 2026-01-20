@@ -47,6 +47,9 @@ public class PM extends Peripheral {
         super(baseAddr, name, 0x400);
         resetRegisters();
     }
+    
+    @Override
+    protected void link() {}
 
     // -------------------------
     // Reset Values from Table 7-5

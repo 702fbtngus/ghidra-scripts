@@ -41,6 +41,9 @@ public class USART extends Peripheral {
 
         VERSION = 0;           // device-specific placeholder
     }
+    
+    @Override
+    protected void link() {}
 
     @Override
     protected boolean onWrite(int ofs, int val) {

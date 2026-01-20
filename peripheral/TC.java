@@ -26,6 +26,9 @@ public class TC extends Peripheral {
         FEATURES = 0;
         VERSION = 0;
     }
+    
+    @Override
+    protected void link() {}
 
     @Override
     protected boolean onWrite(int ofs, int val) {

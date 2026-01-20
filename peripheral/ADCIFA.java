@@ -37,6 +37,9 @@ public class ADCIFA extends Peripheral {
     }
 
     @Override
+    protected void link() {}
+
+    @Override
     protected boolean onWrite(int ofs, int val) {
 
         switch (ofs) {

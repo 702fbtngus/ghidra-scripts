@@ -26,6 +26,9 @@ public class TWIS extends Peripheral {
         PR = 0;
         VR = 0;
     }
+    
+    @Override
+    protected void link() {}
 
     @Override
     protected boolean onWrite(int ofs, int v) {

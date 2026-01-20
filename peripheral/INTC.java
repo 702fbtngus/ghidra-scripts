@@ -18,6 +18,9 @@ public class INTC extends Peripheral {
 
         resetRegisters();
     }
+    
+    @Override
+    protected void link() {}
 
 
     private void resetRegisters() {

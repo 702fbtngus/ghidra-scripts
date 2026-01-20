@@ -14,6 +14,9 @@ public class FLASHC extends Peripheral {
         super(baseAddr, name);
         resetRegisters();
     }
+    
+    @Override
+    protected void link() {}
 
     private void resetRegisters() {
         // RW registers reset to 0

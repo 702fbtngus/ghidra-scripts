@@ -7,6 +7,7 @@ public class TWIM extends Peripheral {
     int IER, IDR, IMR;
     int SCR, PR, VR;
 
+    private INTC intc;
 
     public TWIM(long baseAddr, String name) {
 
@@ -31,6 +32,10 @@ public class TWIM extends Peripheral {
         VR = 0x00000000;
     }
 
+    @Override
+    protected void link() {
+        this.intc = (INTC) Peripheral.findPeripheral("INTC");
+    }
     @Override
     protected boolean onWrite(int ofs, int val) {
         switch (ofs) {

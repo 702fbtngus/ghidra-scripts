@@ -36,6 +36,21 @@ public abstract class Peripheral {
         registry.add(this);
     }
 
+    public static final void linkAllPeripherals() {
+        for (Peripheral peripheral : registry) {
+            peripheral.link();
+        }
+    }
+
+    public static final Peripheral findPeripheral(String name) {
+        for (Peripheral peripheral : registry) {
+            if (peripheral.name.equals(name)) {
+                return peripheral;
+            }
+        }
+        return null;
+    }
+
     // ------------------------------
     // Concrete store()
     // ------------------------------
@@ -74,6 +89,7 @@ public abstract class Peripheral {
     // ------------------------------
     // Subclass responsibility
     // ------------------------------
+    protected abstract void link();
     protected abstract boolean onWrite(int offset, int value);
     protected abstract Integer onRead(int offset);
 

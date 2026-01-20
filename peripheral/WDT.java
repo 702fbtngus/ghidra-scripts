@@ -12,6 +12,9 @@ public class WDT extends Peripheral {
         ST = 0x00000003;
         VERSION = 0x00000410;
     }
+    
+    @Override
+    protected void link() {}
 
     @Override
     protected boolean onWrite(int ofs, int val) {

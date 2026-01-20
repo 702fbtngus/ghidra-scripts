@@ -22,6 +22,9 @@ public class SDRAMC extends Peripheral {
         super(baseAddr, name, 0x400);
         resetRegisters();
     }
+    
+    @Override
+    protected void link() {}
 
     protected void resetRegisters() {
             MR = 0x00000000;

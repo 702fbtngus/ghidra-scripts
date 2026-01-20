@@ -13,6 +13,9 @@ public class GPIO extends Peripheral {
         ports[2] = new GPIOPort(2);
         ports[3] = new GPIOPort(3);
     }
+    
+    @Override
+    protected void link() {}
 
     private GPIOPort decodePort(int offset) {
         int p = offset >>> 9;   // each port = 0x200

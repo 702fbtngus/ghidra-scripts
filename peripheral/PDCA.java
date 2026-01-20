@@ -18,6 +18,9 @@ public class PDCA extends Peripheral {
 
         VERSION = 0;
     }
+    
+    @Override
+    protected void link() {}
 
     @Override
     protected boolean onWrite(int ofs, int val) {
