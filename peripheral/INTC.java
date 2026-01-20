@@ -11,6 +11,8 @@ public class INTC extends Peripheral {
     // 4 Interrupt Cause Registers (RO)
     private final int[] ICR = new int[4];
 
+    public int highestPrio = -1;
+
 
     public INTC(long baseAddr, String name) {
 
@@ -42,6 +44,7 @@ public class INTC extends Peripheral {
             int index = ofs >>> 2;   // /4
             if (index < 64) {
                 IPR[index] = value;
+                updateHighestPriority();
                 return true;
             }
             return false;
@@ -66,8 +69,8 @@ public class INTC extends Peripheral {
     @Override
     protected Integer onRead(int ofs) {
 
-        if (ofs == 0x20c)
-            return 0x21;
+        // if (ofs == 0x20c)
+        //     return 0x21;
 
         if (ofs == 0x184)
             return 0x4;
@@ -96,7 +99,7 @@ public class INTC extends Peripheral {
         // ICR 0x200 ~ 0x20C
         // --------------------
         if (ofs >= 0x200 && ofs < 0x210) {
-            int index = (ofs - 0x200) >>> 2;
+            int index = (0x20c - ofs) >>> 2;
             if (index < 4)
                 return ICR[index];
             return null;
@@ -112,17 +115,46 @@ public class INTC extends Peripheral {
     public void raiseInterrupt(int irq) {
         if (irq < 0 || irq >= 64) return;
 
-        IRR[irq] = 1;  // simple model
+        IRR[irq] = 1;
+        updateHighestPriority();
     }
 
     public void clearInterrupt(int irq) {
         if (irq < 0 || irq >= 64) return;
 
         IRR[irq] = 0;
+        updateHighestPriority();
     }
 
     public void setInterruptCause(int cpu, int cause) {
         if (cpu >= 0 && cpu < 4)
             ICR[cpu] = cause;
     }
+    
+    // ------------------------------------------
+    // ⚡ External helper to trigger an interrupt
+    // ------------------------------------------
+
+    private void updateHighestPriority() {
+        int bestPrio = -1;
+    
+        for (int irq = 0; irq < 64; irq++) {
+            if (IRR[irq] == 0)
+                continue;
+    
+            int prio = IPR[irq] >>> 0x36;
+    
+            if (prio > bestPrio ||
+               (prio == bestPrio)) {
+                bestPrio = prio;
+            }
+            
+            if (ICR[prio] == 0) {
+                ICR[prio] = irq;
+            }
+        }
+    
+        highestPrio = bestPrio;
+    }
+    
 }

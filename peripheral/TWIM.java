@@ -7,117 +7,168 @@ public class TWIM extends Peripheral {
     int IER, IDR, IMR;
     int SCR, PR, VR;
 
+    enum State { IDLE, START, TX, RX, STOP }
+    State state = State.IDLE;
+
+    static final int SR_RXRDY  = 1 << 0;
+    static final int SR_TXRDY  = 1 << 1;
+    static final int SR_CCOMP  = 1 << 3;
+    static final int SR_IDLE   = 1 << 4;
+    static final int SR_ANAK   = 1 << 8;
+    static final int SR_DNAK   = 1 << 9;
+
     private INTC intc;
+    private final int irqNumber;
 
-    public TWIM(long baseAddr, String name) {
+    public TWIM(long baseAddr, String name, int irqNumber) {
+        super(baseAddr, name);
+        this.irqNumber = irqNumber;
 
-        super(baseAddr, name);  // Nanomind A3200 TWIM0 base address
-
-        // Reset values according to datasheet
-        CR = 0x00000000;
-        CWGR = 0x00000000;
-        SMBTR = 0x00000000;
-        CMDR = 0x00000000;
-        NCMDR = 0x00000000;
-        RHR = 0x00000000;
-        THR = 0x00000000;
-        SR = 0x00000002;     // Status Register reset = 0x2
-        IER = 0x00000000;
-        IDR = 0x00000000;
-        IMR = 0x00000000;
-        SCR = 0x00000000;
-
-        // Device-specific (safe defaults)
-        PR = 0x00000000;
-        VR = 0x00000000;
+        CR = CWGR = SMBTR = CMDR = NCMDR = 0;
+        RHR = THR = 0;
+        SR  = SR_TXRDY;   // datasheet reset state
+        IER = IDR = IMR = 0;
+        SCR = 0;
+        PR = VR = 0;
     }
 
     @Override
     protected void link() {
         this.intc = (INTC) Peripheral.findPeripheral("INTC");
     }
+
+    /* =========================
+     * Register Write Handling
+     * ========================= */
     @Override
     protected boolean onWrite(int ofs, int val) {
         switch (ofs) {
-            case 0x00:  // CR (write-only)
+
+            case 0x00: // CR
                 CR = val;
-                SR |= (val & 0x1) << 4; // turn on idle bit
+                if ((val & 0x1) != 0) {   // SWRST
+                    reset();
+                }
                 return true;
 
-            case 0x04:  // CWGR (R/W)
-                CWGR = val;
-                return true;
+            case 0x04: CWGR = val; return true;
+            case 0x08: SMBTR = val; return true;
 
-            case 0x08:  // SMBTR (R/W)
-                SMBTR = val;
-                return true;
-
-            case 0x0C:  // CMDR (R/W)
+            case 0x0C: // CMDR
                 CMDR = val;
+                startCommand();
                 return true;
 
-            case 0x10:  // NCMDR (R/W)
+            case 0x10: // NCMDR
                 NCMDR = val;
                 return true;
 
-            case 0x14:  // RHR (read-only)
-                return false;
-
-            case 0x18:  // THR (write-only)
-                THR = val;
+            case 0x18: // THR
+                THR = val & 0xFF;
+                SR &= ~SR_TXRDY;
                 return true;
 
-            case 0x1C:  // SR (read-only)
-                return false;
-
-            case 0x20:  // IER (write-only)
-                IER = val;
+            case 0x20: // IER
+                IMR |= val;
+                evaluateInterrupt();
                 return true;
 
-            case 0x24:  // IDR (write-only)
-                IDR = val;
+            case 0x24: // IDR
+                IMR &= ~val;
+                evaluateInterrupt();
                 return true;
 
-            case 0x28:  // IMR (read-only)
-                return false;
-
-            case 0x2C:  // SCR (write-only)
-                SCR = val;
+            case 0x2C: // SCR
+                SR &= ~(val & 0x00007f08);   // clear-on-write
+                evaluateInterrupt();
                 return true;
-
-            case 0x30:  // PR (read-only)
-            case 0x34:  // VR (read-only)
-                return false;
         }
         return false;
     }
 
+    /* =========================
+     * Register Read Handling
+     * ========================= */
     @Override
     protected Integer onRead(int ofs) {
         switch (ofs) {
-            case 0x00:  // CR (write-only)
-                return null;
-
-            case 0x04:  return CWGR;
-            case 0x08:  return SMBTR;
-            case 0x0C:  return CMDR;
-            case 0x10:  return NCMDR;
-
-            case 0x14:  return RHR;     // read-only
-            case 0x18:  return null;    // THR is write-only
-
-            case 0x1C:  return SR;
-
-            case 0x20:  return null;    // IER write-only
-            case 0x24:  return null;    // IDR write-only
-
-            case 0x28:  return IMR;
-
-            case 0x2C:  return null;    // SCR write-only
-
-            case 0x30:  return PR;
-            case 0x34:  return VR;
+            case 0x04: return CWGR;
+            case 0x08: return SMBTR;
+            case 0x0C: return CMDR;
+            case 0x10: return NCMDR;
+            case 0x14: return RHR;
+            case 0x1C: return SR;
+            case 0x28: return IMR;
+            case 0x30: return PR;
+            case 0x34: return VR;
         }
         return null;
     }
+
+    /* =========================
+     * Internal Logic
+     * ========================= */
+
+    private void reset() {
+        state = State.IDLE;
+        SR = SR_IDLE | SR_TXRDY;
+    }
+
+    private void startCommand() {
+        SR &= ~(SR_CCOMP | SR_IDLE);
+        state = State.START;
+        stepFSM();
+        evaluateInterrupt();
+    }
+
+    private void stepFSM() {
+        switch (state) {
+            case START:
+                if ((CMDR & (1 << 0)) != 0) {   // READ
+                    state = State.RX;
+                } else {
+                    state = State.TX;
+                }
+                stepFSM();
+                break;
+
+            case TX:
+                completeTx();
+                break;
+
+            case RX:
+                completeRx();
+                break;
+
+            case STOP:
+                SR |= SR_CCOMP | SR_IDLE | SR_TXRDY;
+                state = State.IDLE;
+                evaluateInterrupt();
+                break;
+        }
+    }
+
+    private void completeTx() {
+        // No real bus: assume ACK
+        SR |= SR_TXRDY;
+        state = State.STOP;
+        stepFSM();
+    }
+
+    private void completeRx() {
+        // Dummy data
+        RHR = 0x55;
+        SR |= SR_RXRDY;
+        state = State.STOP;
+        stepFSM();
+    }
+
+    private void evaluateInterrupt() {
+        if ((SR & IMR) != 0) {
+            intc.raiseInterrupt(irqNumber);
+        } else {
+            intc.clearInterrupt(irqNumber);
+        }
+    }
+    
 }

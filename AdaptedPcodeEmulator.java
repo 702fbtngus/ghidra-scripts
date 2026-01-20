@@ -85,23 +85,45 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         );
     }
 
-    public boolean printerMask() {
+    public boolean printerMask(int i) {
         return (
-            (currentPhase == 1)
+            true
+            // (currentPhase == 1)
+            // || (currentPhase == 0 && i == 2)
             // || (currentPhase == 1 && (currentInstructionCount > 500000 || currentInstructionCount < 10000))
         );
     }
+
+    public boolean exitCondition() {
+        return (
+            (currentPhase == 27)
+            || (currentInstructionCount > 150000)
+        );
+    }
         
+    public String getCurrentFunctionName() {
+        if (currentThread == null) return "null";
+        
+        Address counter = currentThread.getCounter();
+        if (counter == null) return "null";
+
+        Function func = currentProgram.getFunctionManager().getFunctionContaining(counter);
+        if (func == null) return "null";
+
+        return func.getName();
+    }
+
     public void println(String s, int i) {
-        if (printerMask()) {
+        if (printerMask(i)) {
             // if (pw.length > 0) {
             //     System.out.println(s);
             // }
+            String funcname = getCurrentFunctionName();
             if (i > 0 && pw.length > i) {
-                String s1 = s + " (P" + currentPhase + " #" + currentInstructionCount + ")";
+                String s1 = s + " (P" + currentPhase + " #" + currentInstructionCount + ", " + funcname + ")";
                 pw[i].println(s1);
             } else if (i == -1) {
-                String s1 = s + " (P" + currentPhase + " #" + currentInstructionCount + ")";
+                String s1 = s + " (P" + currentPhase + " #" + currentInstructionCount + ", " + funcname + ")";
                 pw[pw.length - 1].println(s1);
             }
             System.out.println(s);
@@ -117,27 +139,28 @@ public class AdaptedPcodeEmulator extends GhidraScript {
 
 
     public enum RegisterName {
-        SR  (0x0000l, 4),
-        R0  (0x1000l, 4),
-        C   (0x1100l, 1),
-        Z   (0x1101l, 1),
-        N   (0x1102l, 1),
-        V   (0x1103l, 1),
-        R1  (0x1004l, 4),
-        R2  (0x1008l, 4),
-        R3  (0x100cl, 4),
-        R4  (0x1010l, 4),
-        R5  (0x1014l, 4),
-        R6  (0x1018l, 4),
-        R7  (0x101cl, 4),
-        R8  (0x1020l, 4),
-        R9  (0x1024l, 4),
-        R10 (0x1028l, 4),
-        R11 (0x102cl, 4),
-        R12 (0x1030l, 4),
-        SP  (0x1034l, 4),
-        LR  (0x1038l, 4),
-        PC  (0x103cl, 4);
+        SR   (0x0000l, 4),
+        EVBA (0x0004l, 4),
+        R0   (0x1000l, 4),
+        C    (0x1100l, 1),
+        Z    (0x1101l, 1),
+        N    (0x1102l, 1),
+        V    (0x1103l, 1),
+        R1   (0x1004l, 4),
+        R2   (0x1008l, 4),
+        R3   (0x100cl, 4),
+        R4   (0x1010l, 4),
+        R5   (0x1014l, 4),
+        R6   (0x1018l, 4),
+        R7   (0x101cl, 4),
+        R8   (0x1020l, 4),
+        R9   (0x1024l, 4),
+        R10  (0x1028l, 4),
+        R11  (0x102cl, 4),
+        R12  (0x1030l, 4),
+        SP   (0x1034l, 4),
+        LR   (0x1038l, 4),
+        PC   (0x103cl, 4);
     
         private final long memoryAddress;
         private final int numBytes;
@@ -162,16 +185,16 @@ public class AdaptedPcodeEmulator extends GhidraScript {
     
 
 
-    public Register findRegisterByName(PcodeExecutorState<byte[]> state, String name) {
-        for (Register reg : state.getRegisterValues().keySet()) {
-            // println("regname: " + reg.getName());
-            // println("regaddr: " + reg.getAddress());
-            if (reg.getName().equals(name)) {
-                return reg;
-            }
-        }
-        return null;
-    }
+    // public Register findRegisterByName(PcodeExecutorState<byte[]> state, String name) {
+    //     for (Register reg : state.getRegisterValues().keySet()) {
+    //         // println("regname: " + reg.getName());
+    //         // println("regaddr: " + reg.getAddress());
+    //         if (reg.getName().equals(name)) {
+    //             return reg;
+    //         }
+    //     }
+    //     return null;
+    // }
 
     public int loadFromAddr(PcodeExecutorState<byte[]> state, int addr) {
         int result = Util.byteArrayToInt(state.getVar(toAddr(addr), 4, true, Reason.INSPECT));
@@ -225,7 +248,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         return ((int) getInstructionAfter(toAddr(addr)).getAddress().getOffset());
     }
 
-    public void int0(PcodeExecutorState<byte[]> state) {
+    public void callInterruptWrapper(PcodeExecutorState<byte[]> state, int i) {
         // *(--SPSYS) = R8;
         // *(--SPSYS) = R9;
         // *(--SPSYS) = R10;
@@ -240,6 +263,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         // SR[I0M] = 1;
         // PC = EVBA + INTERRUPT_VECTOR_OFFSET;
         
+        println("callInterruptWrapper " + i);
         int sp = getRegisterValue(state, "SP");
 
         sp -= 4;
@@ -255,7 +279,10 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         sp -= 4;
         storeToAddr(state, sp, getRegisterValue(state, "LR"));
         sp -= 4;
-        storeToAddr(state, sp, nextInstructionAddr(getRegisterValue(state, "PC")));
+        // println("PC = " + getRegisterValue(state, "PC"));
+        // println("next PC = " + nextInstructionAddr(getRegisterValue(state, "PC")));
+        // storeToAddr(state, sp, nextInstructionAddr(getRegisterValue(state, "PC")));
+        storeToAddr(state, sp, getRegisterValue(state, "PC"));
         sp -= 4;
         storeToAddr(state, sp, getRegisterValue(state, "SR"));
 
@@ -264,9 +291,26 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         int sr = getRegisterValue(state, "SR");
         sr &= ~(1 << 15);
         sr &= ~(1 << 28);
+
         sr &= ~(0b111 << 22);
-        sr |= 0b010 << 22;
-        sr |= 1 << 17;
+        int mode = switch (i) {
+            case 0 -> 0b010;
+            case 1 -> 0b011;
+            case 2 -> 0b100;
+            case 3 -> 0b101;
+            default -> -1;
+        };
+        sr |= mode << 22;
+        
+        int mask = switch (i) {
+            case 0 -> 0b0001;
+            case 1 -> 0b0011;
+            case 2 -> 0b0111;
+            case 3 -> 0b1111;
+            default -> -1;
+        };
+        sr |= mask << 17;
+
         setRegisterValue(state, "SR", sr);
 
         setRegisterValue(state, "PC", 0x8005ab20);
@@ -433,7 +477,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         public void doSleep(@OpState PcodeExecutorState<byte[]> state, int i) {
             // TODO: Your logic, which I suppose could be NOP
             println("doSleep", 4);
-            int0(state);
+            callInterruptWrapper(state, 0);
         }
 
         // @PcodeUserop
@@ -638,19 +682,28 @@ public class AdaptedPcodeEmulator extends GhidraScript {
     public void printAllRegisters(PcodeThread<byte[]> thread) {
         // if (0x800371faL <= addr.getOffset() && addr.getOffset() <= 0x800372c6L) {
 
-        String[] interesting_regs = {"PC", "SP", "LR", "C", "Z", "N", "V", "SR"};
-        if (true) {
-            println(">>> All Registers:");
-            var rv = thread.getState().getRegisterValues();
-            for (Register reg : rv.keySet()) {
-                if ((reg.getName().startsWith("R")
-                    && !reg.getName().equals("R"))
-                || Arrays.asList(interesting_regs).contains(reg.getName())) {
-                    byte[] v = thread.getState().getVar(reg, Reason.INSPECT);
-                    println("  " + reg.getName() + " (" + reg.getAddress()  + ") = " + bytesToHex(v));
-                }
-            }
+        println(">>> All Registers:");
+        for (RegisterName rn : RegisterName.values()) {
+            int v = getRegisterValue(thread.getState(), rn.name());
+            println("  " + rn.name() + " (" + intToHex((int) rn.memoryAddress())  + ") = " + intToHex(v));
         }
+
+        // String[] interesting_regs = {"PC", "SP", "LR", "C", "Z", "N", "V", "SR"};
+        // if (true) {
+        //     println(">>> All Registers:");
+        //     var rv = thread.getState().getRegisterValues();
+        //     for (Register reg : rv.keySet()) {
+        //         if ((reg.getName().startsWith("R")
+        //             && !reg.getName().equals("R"))
+        //         || Arrays.asList(interesting_regs).contains(reg.getName())) {
+        //             byte[] v = thread.getState().getVar(reg, Reason.INSPECT);
+        //             println("  " + reg.getName() + " (" + reg.getAddress()  + ") = " + bytesToHex(v));
+        //         }
+        //     }
+        //     println("  PC (register:103c) = " + intToHex((int) currentThread.getCounter().getOffset()));
+        // }
+
+
         // byte[] v = thread.getState().getVar(toAddr(0x368), 4, true, Reason.INSPECT);
         // println(" *0x368 = " + bytesToHex(v));
         // v = thread.getState().getVar(toAddr(0x8005AF40), 4, true, Reason.INSPECT);
@@ -787,6 +840,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
             PcodeFrame frame = thread.getFrame();
             if (frame != null) {
                 currentFrame = frame;
+                isBranch = false;
                 var ops = frame.getCode();
                 println("Executing frame of size " + ops.size());
 
@@ -870,7 +924,6 @@ public class AdaptedPcodeEmulator extends GhidraScript {
                 }
                 if (isBranch) {
                     currentFrame.finishAsBranch();
-                    isBranch = false;
                 }
                 thread.stepPcodeOp();
             }
@@ -881,9 +934,16 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         return 0;
     }
 
-    // void handleInterrupt() {
-        
-    // }
+    void handleInterrupt() {
+        int prio = intc.highestPrio;
+        PcodeExecutorState<byte[]> state = currentThread.getState();
+        int sr = getRegisterValue(state, "SR");
+        if (prio != -1) {
+            if (((sr >> (17 + prio)) & 1) == 0) {
+                callInterruptWrapper(state, prio);
+            }
+        }
+    }
 
     @Override
     protected void run() throws Exception {
@@ -919,7 +979,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         new TC      ( 0xFFFD2000L, "TC0"     );
         new ADCIFA  ( 0xFFFD2400L, "ADCIFA"  );
         new USART   ( 0xFFFD2800L, "USART4"  );
-        new TWIM    ( 0xFFFD2C00L, "TWIM2"   );
+        new TWIM    ( 0xFFFD2C00L, "TWIM2"   , 45);
         new TWIS    ( 0xFFFD3000L, "TWIS2"   );
         new FLASHC  ( 0xFFFE0000L, "FLASHC"  );
         new HMATRIX ( 0xFFFE2000L, "HMATRIX" );
@@ -933,8 +993,8 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         new USART   ( 0xFFFF2C00L, "USART2"  );
         new USART   ( 0xFFFF3000L, "USART3"  );
         new SPI     ( 0xFFFF3400L, "SPI1"    );
-        new TWIM    ( 0xFFFF3800L, "TWIM0"   );
-        new TWIM    ( 0xFFFF3C00L, "TWIM1"   );
+        new TWIM    ( 0xFFFF3800L, "TWIM0"   , 25);
+        new TWIM    ( 0xFFFF3C00L, "TWIM1"   , 26);
         new TWIS    ( 0xFFFF4000L, "TWIS0"   );
         new TWIS    ( 0xFFFF4400L, "TWIS1"   );
         new TC      ( 0xFFFF5800L, "TC1"     );
@@ -974,6 +1034,20 @@ public class AdaptedPcodeEmulator extends GhidraScript {
              || thread.getCounter().getOffset() == 0x8001db26l
              || thread.getCounter().getOffset() == 0x8001db2al
              || thread.getCounter().getOffset() == 0x8001db2el
+             || thread.getCounter().getOffset() == 0x8001db32l
+             || thread.getCounter().getOffset() == 0x8001db36l
+             || thread.getCounter().getOffset() == 0x8001db3al
+             || thread.getCounter().getOffset() == 0x8001db3el
+             || thread.getCounter().getOffset() == 0x8001db42l
+             || thread.getCounter().getOffset() == 0x8001db46l
+             || thread.getCounter().getOffset() == 0x8001db4al
+             || thread.getCounter().getOffset() == 0x8001db4el
+             || thread.getCounter().getOffset() == 0x8001db52l
+             || thread.getCounter().getOffset() == 0x8001db56l
+             || thread.getCounter().getOffset() == 0x8001db5al
+             || thread.getCounter().getOffset() == 0x8001db5el
+             || thread.getCounter().getOffset() == 0x8001db62l
+             || thread.getCounter().getOffset() == 0x8001db66l
             ) {
                 currentPhase++;
                 currentInstructionCount = 0;
@@ -986,7 +1060,10 @@ public class AdaptedPcodeEmulator extends GhidraScript {
                 return;
             }
             currentInstructionCount++;
-            // handleInterrupt();
+            handleInterrupt();
+            if (exitCondition()) {
+                return;
+            }
         }
         
         
