@@ -197,28 +197,26 @@ public class AdaptedPcodeEmulator extends GhidraScript {
     // }
 
     public int loadFromAddr(PcodeExecutorState<byte[]> state, int addr) {
-        int result = Util.byteArrayToInt(state.getVar(toAddr(addr), 4, true, Reason.INSPECT));
+        int result = Util.getVar(addr);
         println(String.format("[loadFromAddr] *0x%08X = %d (0x%08X)", addr, result, result), 5);
-        return Util.byteArrayToInt(state.getVar(toAddr(addr), 4, true, Reason.INSPECT));
+        return result;
     }
 
 
     public void storeToAddr(PcodeExecutorState<byte[]> state, int addr, int value) {
         println(String.format("[storeToAddr] *0x%08X <- %d (0x%08X)", addr, value, value), 5);
-        state.setVar(toAddr(addr), 4, true, Util.intToByteArray(value));
+        Util.setVar(addr, value);
     }
 
     public int getRegisterValue(PcodeExecutorState<byte[]> state, String name) {
         RegisterName regname = RegisterName.fromMnemonic(name);
         long regaddr = regname.memoryAddress();
         int numbytes = regname.numBytes();
-        var regAddrSpace = currentProgram.getAddressFactory().getAddressSpace("register");
-        return Util.byteArrayToInt(state.getVar(regAddrSpace, regaddr, numbytes, true, Reason.INSPECT));
+        return Util.getVar("register", regaddr, numbytes);
     }
 
     public int getRAMValue(PcodeExecutorState<byte[]> state, int offset) {
-        var regAddrSpace = currentProgram.getAddressFactory().getAddressSpace("RAM");
-        return Util.byteArrayToInt(state.getVar(regAddrSpace, offset, 4, true, Reason.INSPECT));
+        return Util.getVar("RAM", offset);
     }
 
     public void finishFrame(PcodeExecutorState<byte[]> state) {
@@ -230,8 +228,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         RegisterName regname = RegisterName.fromMnemonic(name);
         long regaddr = regname.memoryAddress();
         int numbytes = regname.numBytes();
-        var regAddrSpace = currentProgram.getAddressFactory().getAddressSpace("register");
-        state.setVar(regAddrSpace, regaddr, numbytes, true, Util.intToByteArray(value, numbytes));
+        Util.setVar("register", regaddr, numbytes, value);
 
         if (name == "PC") {
             currentThread.setCounter(toAddr(value));
@@ -741,28 +738,28 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         return 0;
     }
     
-    public int hookSystemRegisterAccess_(Varnode node, PcodeThread<byte[]> thread) {
+    // public int hookSystemRegisterAccess_(Varnode node, PcodeThread<byte[]> thread) {
 
-        long a = node.getOffset();
+    //     long a = node.getOffset();
 
-        if (node.isConstant() && a <= 1020) {
-        // if (isCopy && a == 0x108) {
-            Integer value = system_register.onRead((int) a);
+    //     if (node.isConstant() && a <= 1020) {
+    //     // if (isCopy && a == 0x108) {
+    //         Integer value = system_register.onRead((int) a);
             
-            if (value != null) {
-                printAllRegisters(thread);
-                Integer valueBefore = Util.byteArrayToInt(thread.getState().getVar(node, Reason.INSPECT));
-                if (a != 0)
-                    thread.getState().setVar(node, Util.intToByteArray(value, node.getSize()));
-                println("Overwrote system register @ " + String.format("0x%02X", a) + ": " + String.format("0x%02X", valueBefore) + " -> " + String.format("0x%02X", value), 3);
-                printAllRegisters(thread);
-            } else {
-                println("Copy from unsupported system register @ " + String.format("0x%02X", a));
-                return -1;
-            }
-        }
-        return 0;
-    }
+    //         if (value != null) {
+    //             printAllRegisters(thread);
+    //             Integer valueBefore = Util.byteArrayToInt(thread.getState().getVar(node, Reason.INSPECT));
+    //             if (a != 0)
+    //                 thread.getState().setVar(node, Util.intToByteArray(value, node.getSize()));
+    //             println("Overwrote system register @ " + String.format("0x%02X", a) + ": " + String.format("0x%02X", valueBefore) + " -> " + String.format("0x%02X", value), 3);
+    //             printAllRegisters(thread);
+    //         } else {
+    //             println("Copy from unsupported system register @ " + String.format("0x%02X", a));
+    //             return -1;
+    //         }
+    //     }
+    //     return 0;
+    // }
 
     public int hookSystemRegisterAccess(Varnode node, PcodeOp op, PcodeThread<byte[]> thread) {
 
@@ -775,12 +772,13 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         // if (isCopy && a == 0x108) {
             Integer value = null;
             if (a == 0) {
-                var rv = thread.getState().getRegisterValues();
-                for (Register reg : rv.keySet()) {
-                    if ((reg.getName().equals("SR"))) {
-                        value = Util.byteArrayToInt(thread.getState().getVar(reg, Reason.INSPECT));
-                    }
-                }
+                // var rv = thread.getState().getRegisterValues();
+                // for (Register reg : rv.keySet()) {
+                //     if ((reg.getName().equals("SR"))) {
+                //         value = Util.byteArrayToInt(thread.getState().getVar(reg, Reason.INSPECT));
+                //     }
+                // }
+                value = getRegisterValue(thread.getState(), "SR");
             } else {
                 value = system_register.onRead((int) a);
             }
@@ -788,9 +786,8 @@ public class AdaptedPcodeEmulator extends GhidraScript {
             if (value != null) {
                 printAllRegisters(thread);
                 Varnode output = op.getOutput();
-                Integer valueBefore = Util.byteArrayToInt(thread.getState().getVar(output, Reason.INSPECT));
-                // if (a != 0)
-                thread.getState().setVar(output, Util.intToByteArray(value, output.getSize()));
+                Integer valueBefore = Util.getVar(output);
+                Util.setVar(output, value);
                 println("Overwrote system register @ " + String.format("0x%02X", a) + ": " + String.format("0x%02X", valueBefore) + " -> " + String.format("0x%02X", value), 3);
                 printAllRegisters(thread);
             } else {
@@ -800,21 +797,6 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         }
         return 0;
     }
-    
-
-    public Address byteArrayToAddress(byte[] b) {
-
-        // long addrVal = 0L;
-        // for (int i = 0; i < b.length; i++) {
-        //     addrVal |= (b[i] & 0xFFL) << (8 * (3-i));
-        // }
-
-        Address target = toAddr(Util.byteArrayToInt(b));
-
-        return target;
-
-    }
-    
 
     public int executeInstr(PcodeThread<byte[]> thread) throws AddressFormatException {
         Address addr = thread.getCounter();
@@ -884,20 +866,20 @@ public class AdaptedPcodeEmulator extends GhidraScript {
                     // }
 
                     if (interesting) {
-                        byte[][] result = null;
+                        int[] result = null;
                         if (inputs.length > 0) {
                             result = Arrays.stream(inputs)
-                            .map(x -> thread.getState().getVar(x, Reason.INSPECT))
-                            .toArray(byte[][]::new);
+                            .mapToInt(x -> Util.getVar(x))
+                            .toArray();
                             
                             for (int j = 0; (j < result.length); j++) {
-                                byte[] b = result[j];
-                                println("Input " + j + ": " + bytesToHex(b));
+                                int b = result[j];
+                                println("Input " + j + ": " + intToHex(b));
                             }
                         }
 
                         if (result != null && result.length > 1) {
-                            Address memaddr = byteArrayToAddress(result[1]);
+                            Address memaddr = toAddr(result[1]);
                             if (hookMemoryAccess(memaddr, op, thread) == -1) {
                                 return -1;
                             }
@@ -910,10 +892,10 @@ public class AdaptedPcodeEmulator extends GhidraScript {
                         }
                         
                         if (output != null) {
-                            var outputv = thread.getState().getVar(output, Reason.INSPECT);
-                            println("Output: " + bytesToHex(outputv));
+                            var outputv = Util.getVar(output);
+                            println("Output: " + intToHex(outputv));
                             if (output.isRegister() && output.getOffset() == 0x103c) {
-                                setRegisterValue(thread.getState(), "PC", Util.byteArrayToInt(outputv));
+                                setRegisterValue(thread.getState(), "PC", outputv);
                             }
                         }
                         // boolean ok = askYesNo("중단", "계속 실행할까요?");
@@ -968,6 +950,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
             return null;
         };
         Util.setFunctions(pln, pln_alt);
+        Util.currentScript = this;
 
         PcodeEmulator emu = getInternalPcodeEmulator(currentProgram);
         println("Got internal PcodeEmulator: " + emu.getClass().getName());
@@ -1004,11 +987,10 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         intc = (INTC) Peripheral.findPeripheral("INTC");
         system_register = new SystemRegister();
 
-
-
         // 예시: 스레드 생성 및 실행
         var thread = emu.newThread("main");
         currentThread = thread;
+        Util.currentThread = thread;
         Address entry = toAddr(0x80000000);
         // Address entry = toAddr(0x8001da84);
         // var thread = emu.newThread("randev_sys_uplink_manager");
