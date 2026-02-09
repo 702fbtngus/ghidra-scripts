@@ -34,7 +34,7 @@ public class TWIM extends MmioDevice {
 
     @Override
     protected void link() {
-        this.intc = (INTC) MmioDevice.findMmioDevice("INTC");
+        this.intc = (INTC) Device.findDevice("INTC");
     }
 
     /* =========================

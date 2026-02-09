@@ -51,14 +51,13 @@ public class CubeSatEmulator extends GhidraScript {
     public static String[] PW_FILENAMES = {
         "main.log",
         "instr.log",
-        "peripheral.log",
+        "device.log",
         "sysreg.log",
         "userop.log",
         "storeload.log",
         "temp.log",
     };
 
-    public List<MmioDevice> peripherals;
     public SystemRegister system_register;
     public String currentFunctionName = "";
     public int currentInstructionCount = 0;
@@ -593,14 +592,14 @@ public class CubeSatEmulator extends GhidraScript {
             if (isStore) {
                 Integer res = MmioDevice.storeToMmioDeviceAddr(a, op.getInputs()[2]);
                 if (res == null) {
-                    println("Store to unsupported peripheral @ " + addr, 2);
+                    println("Store to unsupported mmiodevice @ " + addr, 2);
                     return -1;
                 }
                 return res;
             } else if (isLoad) {
                 Integer res = MmioDevice.loadFromMmioDeviceAddr(a, op.getOutput());
                 if (res == null) {
-                    println("Load from unsupported peripheral @ " + addr, 2);
+                    println("Load from unsupported mmiodevice @ " + addr, 2);
                     return -1;
                 }
                 return res;
@@ -803,9 +802,8 @@ public class CubeSatEmulator extends GhidraScript {
         new TWIS    ( 0xFFFF4400L, "TWIS1"   );
         new TC      ( 0xFFFF5800L, "TC1"     );
 
-        peripherals = MmioDevice.registry;
-        MmioDevice.linkAllMmioDevices();
-        intc = (INTC) MmioDevice.findMmioDevice("INTC");
+        Device.linkAllDevices();
+        intc = (INTC) Device.findDevice("INTC");
         system_register = new SystemRegister();
 
         var thread = emu.newThread("main");
