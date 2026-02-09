@@ -1,8 +1,5 @@
 package hw;
 
-import java.util.ArrayList;
-import java.util.List;
-import ghidra.pcode.emu.PcodeThread;
 import ghidra.program.model.pcode.Varnode;
 
 import etc.Util;
@@ -12,8 +9,6 @@ public abstract class MmioDevice extends Device{
     // ------------------------------
     // 🔥 자동 등록되는 MmioDevice 전역 리스트
     // ------------------------------
-    public static PcodeThread<byte[]> curThread;
-
     public final long base;
     public final long size;
 

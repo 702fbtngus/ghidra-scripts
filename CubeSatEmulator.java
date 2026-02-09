@@ -12,7 +12,6 @@ import java.io.PrintWriter;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Arrays;
-import java.util.List;
 import java.util.function.BiFunction;
 
 import ghidra.app.emulator.AdaptedEmulator;
@@ -809,7 +808,6 @@ public class CubeSatEmulator extends GhidraScript {
         var thread = emu.newThread("main");
         currentThread = thread;
         Util.currentThread = thread;
-        MmioDevice.curThread = thread;
         Address entry = toAddr(0x80000000);
         thread.overrideCounter(entry);
 

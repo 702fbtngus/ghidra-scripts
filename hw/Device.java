@@ -2,7 +2,6 @@ package hw;
 
 import java.util.ArrayList;
 import java.util.List;
-import ghidra.pcode.emu.PcodeThread;
 
 public abstract class Device {
 
@@ -10,8 +9,6 @@ public abstract class Device {
     // 🔥 자동 등록되는 Device 전역 리스트
     // ------------------------------
     public static final List<Device> registry = new ArrayList<>();
-    public static PcodeThread<byte[]> curThread;
-
     public final String name;
 
     public Device(String name) {
