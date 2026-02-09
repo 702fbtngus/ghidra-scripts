@@ -144,6 +144,8 @@ public class ADCIFA extends Peripheral {
 
             case 0x0068: return ADCCAL;
             case 0x006C: return SHCAL;
+
+            case 0x00A0: return 0; // Temporarily bypassing error
         }
 
         return null;

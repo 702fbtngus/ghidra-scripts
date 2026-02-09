@@ -37,9 +37,6 @@ import ghidra.program.model.pcode.PcodeOp;
 import etc.Util;
 import ghidra.pcode.emu.AbstractPcodeMachine;
 import ghidra.program.model.address.AddressFormatException;
-import ghidra.program.model.address.AddressSpace;
-import ghidra.program.model.address.GenericAddress;
-import ghidra.program.model.address.GenericAddressSpace;
 import ghidra.program.model.pcode.Varnode;
 import ghidra.util.exception.CancelledException;
 import peripheral.*;
@@ -97,7 +94,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
     public boolean exitCondition() {
         return (
             (currentPhase == 27)
-            || (currentInstructionCount > 150000)
+            || (currentInstructionCount > 200000)
         );
     }
         
@@ -546,10 +543,6 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         return sb.toString();
     }
 
-    public static String intToHex(int i) {
-        return String.format("%08X", i);
-    }
-
     public boolean isFirstAddrInBlock(Address addr) {
         BasicBlockModel bbModel = new BasicBlockModel(currentProgram);
         CodeBlock startBlock;
@@ -682,7 +675,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         println(">>> All Registers:");
         for (RegisterName rn : RegisterName.values()) {
             int v = getRegisterValue(thread.getState(), rn.name());
-            println("  " + rn.name() + " (" + intToHex((int) rn.memoryAddress())  + ") = " + intToHex(v));
+            println("  " + rn.name() + " (" + Util.intToHex((int) rn.memoryAddress())  + ") = " + Util.intToHex(v));
         }
 
         // String[] interesting_regs = {"PC", "SP", "LR", "C", "Z", "N", "V", "SR"};
@@ -697,7 +690,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         //             println("  " + reg.getName() + " (" + reg.getAddress()  + ") = " + bytesToHex(v));
         //         }
         //     }
-        //     println("  PC (register:103c) = " + intToHex((int) currentThread.getCounter().getOffset()));
+        //     println("  PC (register:103c) = " + Util.intToHex((int) currentThread.getCounter().getOffset()));
         // }
 
 
@@ -714,24 +707,34 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         boolean isLoad = PcodeOp.getMnemonic(op.getOpcode()).equals("LOAD");
     
         if (a >= 0xFFFD0000L && a < 0xFFFF7400L) {
-            for (Peripheral p : Peripheral.registry) {
+            // for (Peripheral p : Peripheral.registry) {
                 
-                if (!p.contains(a)) continue;
+            //     if (!p.contains(a)) continue;
                 
-                int off = (int)(a - p.base);
+            //     int off = (int)(a - p.base);
                 
-                if (isStore) {
-                    println("Store to " + p.name + " @ " + addr, 2);
-                    return p.store(off, op.getInputs()[2], thread);
-                } else if (isLoad) {
-                    println("Load from " + p.name + " @ " + addr, 2);
-                    return p.load(off, op.getOutput(), thread);
-                } 
-            }
+            //     if (isStore) {
+            //         println("Store to " + p.name + " @ " + addr, 2);
+            //         return p.store(off, op.getInputs()[2], thread);
+            //     } else if (isLoad) {
+            //         println("Load from " + p.name + " @ " + addr, 2);
+            //         return p.load(off, op.getOutput(), thread);
+            //     } 
+            // }
             if (isStore) {
-                println("Store to unsupported peripheral @ " + addr, 2);
+                Integer res = Peripheral.storeToPeripheralAddr(a, op.getInputs()[2]);
+                if (res == null) {
+                    println("Store to unsupported peripheral @ " + addr, 2);
+                    return -1;
+                }
+                return res;
             } else if (isLoad) {
-                println("Load from unsupported peripheral @ " + addr, 2);
+                Integer res = Peripheral.loadFromPeripheralAddr(a, op.getOutput());
+                if (res == null) {
+                    println("Load from unsupported peripheral @ " + addr, 2);
+                    return -1;
+                }
+                return res;
             }
             return -1;
         }
@@ -874,7 +877,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
                             
                             for (int j = 0; (j < result.length); j++) {
                                 int b = result[j];
-                                println("Input " + j + ": " + intToHex(b));
+                                println("Input " + j + ": " + Util.intToHex(b));
                             }
                         }
 
@@ -893,7 +896,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
                         
                         if (output != null) {
                             var outputv = Util.getVar(output);
-                            println("Output: " + intToHex(outputv));
+                            println("Output: " + Util.intToHex(outputv));
                             if (output.isRegister() && output.getOffset() == 0x103c) {
                                 setRegisterValue(thread.getState(), "PC", outputv);
                             }
@@ -991,6 +994,7 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         var thread = emu.newThread("main");
         currentThread = thread;
         Util.currentThread = thread;
+        Peripheral.curThread = thread;
         Address entry = toAddr(0x80000000);
         // Address entry = toAddr(0x8001da84);
         // var thread = emu.newThread("randev_sys_uplink_manager");
@@ -998,8 +1002,9 @@ public class AdaptedPcodeEmulator extends GhidraScript {
         thread.overrideCounter(entry);
         // println(currentProgram.getLanguage().getLanguageID().getIdAsString());
         // setRegisterValue(thread.getState(), "SR", 0x610000);
-        var regAddrSpace = currentProgram.getAddressFactory().getAddressSpace("register");
-        thread.getState().setVar(regAddrSpace, 0x0l, 4, true, Util.intToByteArray(0x610000));
+
+        Util.setVar("register", 0x0l, 0x610000);
+
         // state.setVar(toAddr(addr), , true, Util.intToByteArray(value));
 
         

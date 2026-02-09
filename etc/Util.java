@@ -64,6 +64,10 @@ public class Util {
     
         return result;
     }
+
+    public static String intToHex(long addr) {
+        return String.format("%08X", addr);
+    }
     
 
     public static byte[] intToByteArray(int a) {
