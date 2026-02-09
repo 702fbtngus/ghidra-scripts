@@ -1,6 +1,6 @@
-package peripheral;
+package hw;
 
-public class FLASHC extends Peripheral {
+public class FLASHC extends MmioDevice {
 
     int FCR;        // 0x00 Read/Write
     int FCMD;       // 0x04 Read/Write

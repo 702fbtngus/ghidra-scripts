@@ -1,6 +1,6 @@
-package peripheral;
+package hw;
 
-public class CANIF extends Peripheral {
+public class CANIF extends MmioDevice {
 
     int VERSION, PARAMETER, CANRAMB, CANCFG, CANCTRL;
     int CANSR, CANFC, CANIER, CANIDR;

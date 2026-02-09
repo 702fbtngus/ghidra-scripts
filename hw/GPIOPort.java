@@ -1,4 +1,4 @@
-package peripheral;
+package hw;
 
 public class GPIOPort {
 

@@ -1,6 +1,6 @@
-package peripheral;
+package hw;
 
-public class USART extends Peripheral {
+public class USART extends MmioDevice {
 
     int CR, MR, IER, IDR, IMR;
     int CSR, RHR, THR;

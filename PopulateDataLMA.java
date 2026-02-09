@@ -7,38 +7,10 @@
 //@runtime Java
 
 import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.io.FileWriter;
-import java.io.PrintWriter;
-import java.lang.reflect.Method;
-import java.util.Arrays;
-import java.util.List;
-
-import ghidra.app.emulator.AdaptedEmulator;
-import ghidra.app.emulator.EmulatorConfiguration;
-import ghidra.app.emulator.EmulatorHelper;
 import ghidra.app.script.GhidraScript;
-import ghidra.app.util.bin.ByteProvider;
-import ghidra.pcode.emu.PcodeEmulator;
-import ghidra.pcode.emu.PcodeThread;
-import ghidra.pcode.exec.PcodeExecutorStatePiece.Reason;
-import ghidra.pcode.exec.PcodeFrame;
 import ghidra.program.model.address.Address;
-import ghidra.program.model.lang.Register;
-import ghidra.program.model.lang.RegisterValue;
-import ghidra.program.model.listing.Function;
-import ghidra.program.model.listing.Instruction;
-import ghidra.program.model.listing.Listing;
-import ghidra.program.model.listing.Program;
-import ghidra.program.model.listing.ProgramContext;
 import ghidra.program.model.mem.MemoryBlock;
-import ghidra.program.model.mem.MemoryBlockSourceInfo;
-import ghidra.program.model.pcode.PcodeOp;
-
-import etc.Util;
 import ghidra.program.model.mem.Memory;
-import ghidra.program.model.pcode.Varnode;
-import peripheral.*;
 
 public class PopulateDataLMA extends GhidraScript {
 

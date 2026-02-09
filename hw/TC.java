@@ -1,6 +1,6 @@
-package peripheral;
+package hw;
 
-public class TC extends Peripheral {
+public class TC extends MmioDevice {
 
     private static class Channel {
         int CCR, CMR, CV, RA, RB, RC, SR, IER, IDR, IMR;

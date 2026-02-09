@@ -1,6 +1,6 @@
-package peripheral;
+package hw;
 
-public class TWIS extends Peripheral {
+public class TWIS extends MmioDevice {
 
     int CR, NBYTES, TR, RHR, THR, PECR, SR;
     int IER, IDR, IMR, SCR, PR, VR;

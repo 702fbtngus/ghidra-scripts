@@ -1,6 +1,6 @@
-package peripheral;
+package hw;
 
-public class PM extends Peripheral {
+public class PM extends MmioDevice {
 
     // -------------------------
     // Registers (Table 7-5)

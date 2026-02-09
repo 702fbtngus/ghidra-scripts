@@ -1,4 +1,4 @@
-package peripheral;
+package hw;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -7,19 +7,19 @@ import ghidra.program.model.pcode.Varnode;
 
 import etc.Util;
 
-public abstract class Peripheral {
+public abstract class MmioDevice {
 
     // ------------------------------
-    // 🔥 자동 등록되는 Peripheral 전역 리스트
+    // 🔥 자동 등록되는 MmioDevice 전역 리스트
     // ------------------------------
-    public static final List<Peripheral> registry = new ArrayList<>();
+    public static final List<MmioDevice> registry = new ArrayList<>();
     public static PcodeThread<byte[]> curThread;
 
     public final long base;
     public final String name;
     public final long size;
 
-    public Peripheral(long base, String name, long size) {
+    public MmioDevice(long base, String name, long size) {
         this.base = base;
         this.name = name;
         this.size = size;
@@ -28,18 +28,18 @@ public abstract class Peripheral {
         registry.add(this);
     }
 
-    public Peripheral(long base, String name) {
+    public MmioDevice(long base, String name) {
         this(base, name, 0x400l);
     }
 
-    public static final void linkAllPeripherals() {
-        for (Peripheral peripheral : registry) {
+    public static final void linkAllMmioDevices() {
+        for (MmioDevice peripheral : registry) {
             peripheral.link();
         }
     }
 
-    public static final Peripheral findPeripheral(String name) {
-        for (Peripheral peripheral : registry) {
+    public static final MmioDevice findMmioDevice(String name) {
+        for (MmioDevice peripheral : registry) {
             if (peripheral.name.equals(name)) {
                 return peripheral;
             }
@@ -47,8 +47,8 @@ public abstract class Peripheral {
         return null;
     }
 
-    public static final Peripheral findPeriperal(long addr) {
-        for (Peripheral p : Peripheral.registry) {
+    public static final MmioDevice findPeriperal(long addr) {
+        for (MmioDevice p : MmioDevice.registry) {
             if (!p.contains(addr)) continue;
             Util.println("findperipheral " + Util.intToHex(addr) + ": " + p.name);
             return p;
@@ -57,44 +57,44 @@ public abstract class Peripheral {
         return null;
     }
 
-    public static final Integer storeToPeripheralAddr(long addr, Varnode node) {
-        Peripheral p = findPeriperal(addr);
+    public static final Integer storeToMmioDeviceAddr(long addr, Varnode node) {
+        MmioDevice p = findPeriperal(addr);
         if (p == null) return null;
         int off = (int)(addr - p.base);
         Util.println("Store to " + p.name + " @ " + Util.intToHex(addr), 2);
         return p.store(off, node);
     }
-    public static final Integer storeToPeripheralAddr(long addr, long src) {
-        Peripheral p = findPeriperal(addr);
+    public static final Integer storeToMmioDeviceAddr(long addr, long src) {
+        MmioDevice p = findPeriperal(addr);
         if (p == null) return null;
         int off = (int)(addr - p.base);
         Util.println("Store to " + p.name + " @ " + Util.intToHex(addr), 2);
         return p.store(off, src);
     }
-    public static final Integer storeToPeripheralAddr(long addr, long src, int size) {
-        Peripheral p = findPeriperal(addr);
+    public static final Integer storeToMmioDeviceAddr(long addr, long src, int size) {
+        MmioDevice p = findPeriperal(addr);
         if (p == null) return null;
         int off = (int)(addr - p.base);
         Util.println("Store to " + p.name + " @ " + Util.intToHex(addr), 2);
         return p.store(off, src, size);
     }
     
-    public static final Integer loadFromPeripheralAddr(long addr, Varnode node) {
-        Peripheral p = findPeriperal(addr);
+    public static final Integer loadFromMmioDeviceAddr(long addr, Varnode node) {
+        MmioDevice p = findPeriperal(addr);
         if (p == null) return null;
         int off = (int)(addr - p.base);
         Util.println("Load from " + p.name + " @ " + Util.intToHex(addr), 2);
         return p.load(off, node);
     }
-    public static final Integer loadFromPeripheralAddr(long addr, long dest) {
-        Peripheral p = findPeriperal(addr);
+    public static final Integer loadFromMmioDeviceAddr(long addr, long dest) {
+        MmioDevice p = findPeriperal(addr);
         if (p == null) return null;
         int off = (int)(addr - p.base);
         Util.println("Load from " + p.name + " @ " + Util.intToHex(addr), 2);
         return p.load(off, dest);
     }
-    public static final Integer loadFromPeripheralAddr(long addr, long dest, int size) {
-        Peripheral p = findPeriperal(addr);
+    public static final Integer loadFromMmioDeviceAddr(long addr, long dest, int size) {
+        MmioDevice p = findPeriperal(addr);
         if (p == null) return null;
         int off = (int)(addr - p.base);
         Util.println("Load from " + p.name + " @ " + Util.intToHex(addr), 2);

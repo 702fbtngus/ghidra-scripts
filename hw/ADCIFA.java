@@ -1,6 +1,6 @@
-package peripheral;
+package hw;
 
-public class ADCIFA extends Peripheral {
+public class ADCIFA extends MmioDevice {
 
     // ---- Registers ----
     int CR, CFG, SR, SCR, SSR;

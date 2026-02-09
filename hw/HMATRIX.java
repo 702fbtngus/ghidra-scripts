@@ -1,6 +1,6 @@
-package peripheral;
+package hw;
 
-public class HMATRIX extends Peripheral {
+public class HMATRIX extends MmioDevice {
 
     // MCFG0~MCFG15 (0x0000 ~ 0x003C)
     int[] MCFG = new int[16];

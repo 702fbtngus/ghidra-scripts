@@ -1,6 +1,6 @@
-package peripheral;
+package hw;
 
-public class SDRAMC extends Peripheral {
+public class SDRAMC extends MmioDevice {
 
     int MR;       // 0x00
     int TR;       // 0x04

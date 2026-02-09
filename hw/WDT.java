@@ -1,6 +1,6 @@
-package peripheral;
+package hw;
 
-public class WDT extends Peripheral {
+public class WDT extends MmioDevice {
 
     int CTRL, CLR, ST, VERSION;
 

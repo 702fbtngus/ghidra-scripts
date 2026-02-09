@@ -1,6 +1,6 @@
-package peripheral;
+package hw;
 
-public class SCIF extends Peripheral {
+public class SCIF extends MmioDevice {
 
     // Interrupt registers
     int IER;       // 0x0000 WO

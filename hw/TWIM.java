@@ -1,6 +1,6 @@
-package peripheral;
+package hw;
 
-public class TWIM extends Peripheral {
+public class TWIM extends MmioDevice {
 
     int CR, CWGR, SMBTR, CMDR, NCMDR;
     int RHR, THR, SR;
@@ -34,7 +34,7 @@ public class TWIM extends Peripheral {
 
     @Override
     protected void link() {
-        this.intc = (INTC) Peripheral.findPeripheral("INTC");
+        this.intc = (INTC) MmioDevice.findMmioDevice("INTC");
     }
 
     /* =========================

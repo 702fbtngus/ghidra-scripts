@@ -1,8 +1,8 @@
-package peripheral;
+package hw;
 
 import etc.Util;
 
-public class PDCA extends Peripheral {
+public class PDCA extends MmioDevice {
 
     public static final int NUM_CHANNELS = 16;
 
@@ -126,9 +126,9 @@ public class PDCA extends Peripheral {
         };
 
         if (is_rx) {
-            Peripheral.loadFromPeripheralAddr(addr, mar, size);
+            MmioDevice.loadFromMmioDeviceAddr(addr, mar, size);
         } else {
-            Peripheral.storeToPeripheralAddr(addr, mar, size);
+            MmioDevice.storeToMmioDeviceAddr(addr, mar, size);
         }
 
     }

@@ -1,6 +1,6 @@
-package peripheral;
+package hw;
 
-public class GPIO extends Peripheral {
+public class GPIO extends MmioDevice {
 
     private final GPIOPort[] ports = new GPIOPort[4];
 

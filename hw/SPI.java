@@ -1,6 +1,6 @@
-package peripheral;
+package hw;
 
-public class SPI extends Peripheral {
+public class SPI extends MmioDevice {
 
     // Registers
     int CR, MR, RDR, SR, IER, IDR, IMR;

@@ -1,6 +1,6 @@
-package peripheral;
+package hw;
 
-public class INTC extends Peripheral {
+public class INTC extends MmioDevice {
 
     // 64 Interrupt Priority Registers (RW)
     private final int[] IPR = new int[64];
