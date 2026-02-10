@@ -4,7 +4,7 @@ import ghidra.program.model.pcode.Varnode;
 
 import etc.Util;
 
-public abstract class MmioDevice extends Device{
+public abstract class MmioDevice extends Device {
 
     // ------------------------------
     // 🔥 자동 등록되는 MmioDevice 전역 리스트

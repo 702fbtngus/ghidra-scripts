@@ -801,6 +801,9 @@ public class CubeSatEmulator extends GhidraScript {
         new TWIS    ( 0xFFFF4400L, "TWIS1"   );
         new TC      ( 0xFFFF5800L, "TC1"     );
 
+        new MPU3300 ( "MPU3300", 0x68 );
+        new HMC5843 ( "HMC5843", 0x1E );
+
         Device.linkAllDevices();
         intc = (INTC) Device.findDevice("INTC");
         system_register = new SystemRegister();

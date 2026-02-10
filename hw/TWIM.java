@@ -145,20 +145,26 @@ public class TWIM extends MmioDevice {
                 state = State.IDLE;
                 evaluateInterrupt();
                 break;
+
+            default:
+                break;
         }
     }
 
     private void completeTx() {
-        // No real bus: assume ACK
+        int sadr = (CMDR & 0b111111111) >>> 1;
+        int thr = THR & 0xff;
         SR |= SR_TXRDY;
+        int tx = I2CDevice.sendToI2CDevice(sadr, thr);
         state = State.STOP;
         stepFSM();
     }
 
     private void completeRx() {
-        // Dummy data
-        RHR = 0x55;
-        SR |= SR_RXRDY;
+        int sadr = (CMDR & 0b111111111) >>> 1;
+        SR |= SR_TXRDY;
+        int res = I2CDevice.recvFromI2CDevice(sadr);
+        RHR = res;
         state = State.STOP;
         stepFSM();
     }
