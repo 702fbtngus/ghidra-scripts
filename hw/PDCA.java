@@ -10,9 +10,9 @@ public class PDCA extends MmioDevice {
     PDCAPerfMonitor mon = new PDCAPerfMonitor();
     int VERSION;
 
-    public PDCA(long baseAddr, String name) {
+    public PDCA(long baseAddr, String name, int group) {
 
-        super(baseAddr, name, 0x1000);
+        super(baseAddr, name, group, 0x1000l);
 
         for (int i = 0; i < NUM_CHANNELS; i++) {
             channels[i] = new PDCAChannel(i, this);

@@ -9,9 +9,9 @@ public class CANIF extends MmioDevice {
     int MRXISCR, MRXISR, MTXISCR, MTXISR;
     int MOBCTRL, MOBSCR, MOBSR;
 
-    public CANIF(long baseAddr, String name) {
+    public CANIF(long baseAddr, String name, int group) {
 
-        super(baseAddr, name);
+        super(baseAddr, name, group);
 
         VERSION = 0;
         PARAMETER = 0;

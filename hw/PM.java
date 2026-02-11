@@ -42,9 +42,9 @@ public class PM extends MmioDevice {
     int CONFIG;        // 0x03F8 RO (device-specific)
     int VERSION;       // 0x03FC RO (device-specific)
 
-    public PM(long baseAddr, String name) {
+    public PM(long baseAddr, String name, int group) {
 
-        super(baseAddr, name, 0x400);
+        super(baseAddr, name, group);
         resetRegisters();
     }
     

@@ -17,9 +17,9 @@ public class HMATRIX extends MmioDevice {
     // SFR0~SFR15 (0x0110 ~ 0x014C)
     int[] SFR = new int[16];
 
-    public HMATRIX(long baseAddr, String name) {
+    public HMATRIX(long baseAddr, String name, int group) {
 
-        super(baseAddr, name);
+        super(baseAddr, name, group);
         resetRegisters();
     }
     

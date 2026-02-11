@@ -18,11 +18,9 @@ public class TWIM extends MmioDevice {
     static final int SR_DNAK   = 1 << 9;
 
     private INTC intc;
-    private final int irqNumber;
 
-    public TWIM(long baseAddr, String name, int irqNumber) {
-        super(baseAddr, name);
-        this.irqNumber = irqNumber;
+    public TWIM(long baseAddr, String name, int group) {
+        super(baseAddr, name, group);
 
         CR = CWGR = SMBTR = CMDR = NCMDR = 0;
         RHR = THR = 0;
@@ -171,9 +169,9 @@ public class TWIM extends MmioDevice {
 
     private void evaluateInterrupt() {
         if ((SR & IMR) != 0) {
-            intc.raiseInterrupt(irqNumber);
+            intc.raiseInterrupt(group, 0);
         } else {
-            intc.clearInterrupt(irqNumber);
+            intc.clearInterrupt(group, 0);
         }
     }
     

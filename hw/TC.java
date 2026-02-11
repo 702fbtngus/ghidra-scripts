@@ -15,8 +15,8 @@ public class TC extends MmioDevice {
     // Block registers
     int BCR, BMR, FEATURES, VERSION;
 
-    public TC(long baseAddr, String name) {
-        super(baseAddr, name, 0x400);
+    public TC(long baseAddr, String name, int group) {
+        super(baseAddr, name, group);
 
         for (int i = 0; i < 3; i++)
             ch[i] = new Channel();

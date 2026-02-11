@@ -4,9 +4,9 @@ public class GPIO extends MmioDevice {
 
     private final GPIOPort[] ports = new GPIOPort[4];
 
-    public GPIO(long baseAddr, String name) {
+    public GPIO(long baseAddr, String name, int group) {
 
-        super(baseAddr, name, 0x800);   // 4 ports × 0x200
+        super(baseAddr, name, group, 0x800l);   // 4 ports × 0x200
 
         ports[0] = new GPIOPort(0);
         ports[1] = new GPIOPort(1);

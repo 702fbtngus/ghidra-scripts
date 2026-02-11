@@ -40,9 +40,9 @@ public class SCIF extends MmioDevice {
     int RCCVERSION, RCCR8VERSION, OSC32VERSION, RC120VERSION;
     int GPLPVERSION, GCLKVERSION, VERSION;
 
-    public SCIF(long baseAddr, String name) {
+    public SCIF(long baseAddr, String name, int group) {
 
-        super(baseAddr, name, 0x400);
+        super(baseAddr, name, group);
         resetRegisters();
     }
     

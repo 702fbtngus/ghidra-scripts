@@ -11,18 +11,24 @@ public abstract class MmioDevice extends Device {
     // ------------------------------
     public final long base;
     public final long size;
+    public final int group;
 
-    public MmioDevice(long base, String name, long size) {
+    public MmioDevice(long base, String name, int group, long size) {
         super(name);
         this.base = base;
         this.size = size;
+        this.group = group;
 
         // 🔥 생성되면 자동으로 registry에 등록
         Device.registry.add(this);
     }
 
+    public MmioDevice(long base, String name, int group) {
+        this(base, name, group, 0x400l);
+    }
+
     public MmioDevice(long base, String name) {
-        this(base, name, 0x400l);
+        this(base, name, -1, 0x400l);
     }
 
     public static final MmioDevice findMmioDevice(long addr) {

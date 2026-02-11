@@ -15,8 +15,8 @@ public class ADCIFA extends MmioDevice {
     int IER, IDR, IMR;
     int VERSION, PARAMETER, RES;
 
-    public ADCIFA(long baseAddr, String name) {
-        super(baseAddr, name, 0x400);
+    public ADCIFA(long baseAddr, String name, int group) {
+        super(baseAddr, name, group);
 
         // Reset values are device-specific but shown as 0 in datasheet
         CR = CFG = SR = SCR = SSR = 0;

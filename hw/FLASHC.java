@@ -10,8 +10,8 @@ public class FLASHC extends MmioDevice {
     int FGPFRHI;    // 0x14 Read-only
     int FGPFRLO;    // 0x18 Read-only
 
-    public FLASHC(long baseAddr, String name) {
-        super(baseAddr, name);
+    public FLASHC(long baseAddr, String name, int group) {
+        super(baseAddr, name, group);
         resetRegisters();
     }
     

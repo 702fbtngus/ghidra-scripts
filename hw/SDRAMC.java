@@ -17,9 +17,9 @@ public class SDRAMC extends MmioDevice {
 
     int VERSION;  // 0xFC (RO)
 
-    public SDRAMC(long baseAddr, String name) {
+    public SDRAMC(long baseAddr, String name, int group) {
 
-        super(baseAddr, name, 0x400);
+        super(baseAddr, name, group);
         resetRegisters();
     }
     

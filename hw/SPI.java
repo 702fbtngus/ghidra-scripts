@@ -9,8 +9,8 @@ public class SPI extends MmioDevice {
     int WPCR, WPSR;
     int FEATURES, VERSION;
 
-    public SPI(long baseAddr, String name) {
-        super(baseAddr, name);   // Nanomind A3200 SPI base address (확인했으면 수정 가능)
+    public SPI(long baseAddr, String name, int group) {
+        super(baseAddr, name, group);   // Nanomind A3200 SPI base address (확인했으면 수정 가능)
 
         // Reset values (datasheet says all zeros unless device-specific)
         CR = 0;

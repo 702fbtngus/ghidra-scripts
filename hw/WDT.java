@@ -4,9 +4,9 @@ public class WDT extends MmioDevice {
 
     int CTRL, CLR, ST, VERSION;
 
-    public WDT(long baseAddr, String name) {
+    public WDT(long baseAddr, String name, int group) {
 
-        super(baseAddr, name);
+        super(baseAddr, name, group);
         CTRL = 0x00010080;
         CLR = 0;
         ST = 0x00000003;

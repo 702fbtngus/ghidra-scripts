@@ -5,9 +5,9 @@ public class TWIS extends MmioDevice {
     int CR, NBYTES, TR, RHR, THR, PECR, SR;
     int IER, IDR, IMR, SCR, PR, VR;
 
-    public TWIS(long baseAddr, String name) {
+    public TWIS(long baseAddr, String name, int group) {
 
-        super(baseAddr, name);
+        super(baseAddr, name, group);
 
         CR = 0;
         NBYTES = 0;

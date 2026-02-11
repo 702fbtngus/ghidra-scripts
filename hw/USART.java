@@ -9,8 +9,8 @@ public class USART extends MmioDevice {
     int WPMR, WPSR;
     int VERSION;
 
-    public USART(long baseAddr, String name) {
-        super(baseAddr, name);
+    public USART(long baseAddr, String name, int group) {
+        super(baseAddr, name, group);
 
         // Reset values (from datasheet)
         CR = 0;       // Write-only
