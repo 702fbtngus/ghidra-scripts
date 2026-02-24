@@ -32,7 +32,7 @@ import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.pcode.PcodeOp;
-
+import etc.LogBuffer;
 import etc.Util;
 import ghidra.pcode.emu.AbstractPcodeMachine;
 import ghidra.program.model.address.AddressFormatException;
@@ -43,7 +43,8 @@ import hw.*;
 public class CubeSatEmulator extends GhidraScript {
 
     // public static long INTERESTING_ADDR = 0x8005ab42L;
-    public static long INTERESTING_ADDR = 0x8002c4fcL;
+    // public static long INTERESTING_ADDR = 0x8002c5a4l;
+    public static long INTERESTING_ADDR = 0x8002c634l;
     public static int DETAIL_UNTIL = 600000;
     // public static int DETAIL_FROM = 66400;
     public static int DETAIL_FROM = DETAIL_UNTIL + 1;
@@ -54,6 +55,7 @@ public class CubeSatEmulator extends GhidraScript {
         "sysreg.log",
         "userop.log",
         "storeload.log",
+        "thread.log",
         "temp.log",
     };
 
@@ -65,6 +67,14 @@ public class CubeSatEmulator extends GhidraScript {
     public PcodeThread<byte[]> currentThread = null;
     public PcodeFrame currentFrame = null;
     public INTC intc;
+    public TC tc0;
+    public TC tc1;
+
+    public String currentTaskName = "";
+
+    public boolean interrupted = false;
+    
+    public LogBuffer log_buffer;
     
     public static java.util.function.Function<String, Void> println;
 
@@ -77,17 +87,24 @@ public class CubeSatEmulator extends GhidraScript {
 
     public boolean printerMask(int i) {
         return (
-            true
-            // (currentPhase == 1)
+            // true
+            (currentPhase != 25)
+            // && (
+            //     (currentPhase == 27)
+            //     || (currentThread != null && currentThread.getCounter() != null && (currentThread.getCounter().getOffset() == 0x8002f97al || currentThread.getCounter().getOffset() == 0x8002c634l))
+            //     // || i == 2 || i == 1 || i == 0
+            // )
             // || (currentPhase == 0 && i == 2)
             // || (currentPhase == 1 && (currentInstructionCount > 500000 || currentInstructionCount < 10000))
+            // || (currentInstructionCount > 900000)
         );
     }
 
     public boolean exitCondition() {
         return (
-            (currentPhase == 27)
-            || (currentInstructionCount > 200000)
+            (currentPhase == 28)
+            // || (currentPhase == 0 && currentInstructionCount > 200000)
+            // || (currentPhase == 1)
         );
     }
         
@@ -103,18 +120,25 @@ public class CubeSatEmulator extends GhidraScript {
         return func.getName();
     }
 
-    public void println(String s, int i) {
+    public void print_inner(String s, int i) {
         if (printerMask(i)) {
-            String funcname = getCurrentFunctionName();
             if (i > 0 && pw.length > i) {
-                String s1 = s + " (P" + currentPhase + " #" + currentInstructionCount + ", " + funcname + ")";
-                pw[i].println(s1);
+                pw[i].println(s);
             } else if (i == -1) {
-                String s1 = s + " (P" + currentPhase + " #" + currentInstructionCount + ", " + funcname + ")";
-                pw[pw.length - 1].println(s1);
+                pw[pw.length - 1].println(s);
+            } else if (i == 0) {
+                log_buffer.println(s);
             }
-            System.out.println(s);
         }
+    }
+
+    public void println(String s, int i) {
+        String funcname = getCurrentFunctionName();
+        String s1 = s + " (P" + currentPhase + " #" + currentInstructionCount + ", " + funcname + ")";
+        if (i != 0) {
+            print_inner(s1, i);
+        }
+        print_inner(s, 0);
     }
 
     @Override
@@ -191,6 +215,17 @@ public class CubeSatEmulator extends GhidraScript {
         return Util.getVar("RAM", offset);
     }
 
+    public String readString(PcodeExecutorState<byte[]> state, int offset) {
+        String s = "";
+        while (true) {
+            int c = Util.getVar("RAM", offset, 1);
+            if (c == 0) break;
+            offset += 1;
+            s += (char) c;
+        }
+        return s;
+    }
+
     public void finishFrame(PcodeExecutorState<byte[]> state) {
         currentThread.setCounter(toAddr(getRegisterValue(state, "PC")));
         currentFrame.finishAsBranch();
@@ -201,6 +236,12 @@ public class CubeSatEmulator extends GhidraScript {
         long regaddr = regname.memoryAddress();
         int numbytes = regname.numBytes();
         Util.setVar("register", regaddr, numbytes, value);
+        if (name == "SR") {
+            setRegisterValue(state, "C", value >> 0 & 1);
+            setRegisterValue(state, "Z", value >> 1 & 1);
+            setRegisterValue(state, "N", value >> 2 & 1);
+            setRegisterValue(state, "V", value >> 3 & 1);
+        }
     }
 
     public int nextInstructionAddr(int addr) {
@@ -223,6 +264,7 @@ public class CubeSatEmulator extends GhidraScript {
         // PC = EVBA + INTERRUPT_VECTOR_OFFSET;
         
         println("callInterruptWrapper " + i);
+        interrupted = true;
         int sp = getRegisterValue(state, "SP");
 
         sp -= 4;
@@ -326,6 +368,7 @@ public class CubeSatEmulator extends GhidraScript {
             setRegisterValue(state, "SP", sp);
             setRegisterValue(state, "SR", sr);
             finishFrame(state);
+            interrupted = false;
         }
 
         @PcodeUserop
@@ -370,6 +413,7 @@ public class CubeSatEmulator extends GhidraScript {
                     setRegisterValue(state, "SR", loadFromAddr(state, sp));
                     sp += 4;
                     setRegisterValue(state, "PC", loadFromAddr(state, sp));
+                    sp += 4;
                     setRegisterValue(state, "SP", sp);
                     break;
                 default:
@@ -422,7 +466,6 @@ public class CubeSatEmulator extends GhidraScript {
         @PcodeUserop
         public void doSleep(@OpState PcodeExecutorState<byte[]> state, int i) {
             println("doSleep", 4);
-            callInterruptWrapper(state, 0);
         }
     }
 
@@ -496,13 +539,15 @@ public class CubeSatEmulator extends GhidraScript {
 
     public void adjustInstructionCount(Instruction instr, Address addr) {
         if (
-            instr.getMnemonicString().endsWith("SRF")
-            && !isFirstAddrInBlock(addr)
-            && !instr.getPrevious().getMnemonicString().equals("MFSR")
-            && !instr.getPrevious().getMnemonicString().equals("MTSR")
-            && !instr.getPrevious().getMnemonicString().equals("STDSP")
+            (
+                instr.getMnemonicString().endsWith("SRF")
+                && !isFirstAddrInBlock(addr)
+                && !instr.getPrevious().getMnemonicString().equals("MFSR")
+                && !instr.getPrevious().getMnemonicString().equals("MTSR")
+                && !instr.getPrevious().getMnemonicString().equals("STDSP")
+            ) || interrupted
         ) {
-            println("adjusted", 1);
+            // println("adjusted", 1);
             currentInstructionCount--;
         }
     }
@@ -581,6 +626,16 @@ public class CubeSatEmulator extends GhidraScript {
         }
     }
 
+    public void printStack(PcodeThread<byte[]> thread) {
+        println(">>> Stack:");
+        int sp = getRegisterValue(thread.getState(), "SP");
+        // for (int i = 20; i >= 0; i--) {
+        for (int i = 0; i < 8; i++) {
+            int addr = sp + 4 * i;
+            println("  *0x" + Util.intToHex(addr) + " = " + Util.intToHex(getRAMValue(thread.getState(), addr)));
+        }
+    }
+
         
     public int hookMemoryAccess(Address addr, PcodeOp op, PcodeThread<byte[]> thread) {
         long a = addr.getOffset();
@@ -645,8 +700,44 @@ public class CubeSatEmulator extends GhidraScript {
         if (detail) {
             printAllRegisters(thread);
         }
+        
+        // switch (currentInstructionCount) {
+        //     case 40206:
+        //     case 40239:
+        //     case 40452:
+        //     case 40676:
+        //     case 40785:
+        //         tc0.manualTick();
+        //         tc1.manualTick();
+        //         break;
+        // }
 
         adjustInstructionCount(instr, addr);
+
+        PcodeExecutorState<byte[]> state = thread.getState();
+        int old_sp = getRegisterValue(state, "SP");
+
+        if (addr.getOffset() == 0x8002c31cl) {
+            // gs_thread_create
+            int np = getRegisterValue(state, "R12");
+            // int func = getRegisterValue(state, "R11");
+            println("[gs_thread_create] " + readString(state, np), 6);
+            // for (int i = 0; i < 10; i++) {
+            //     println("*" + Util.intToHex(np) + " = " + Util.intToHex(getRAMValue(state, np)), 6);
+            //     np += 4;
+            // }
+        }
+
+        if (addr.getOffset() == 0x8002f8f2l) {
+            // update pxCurrentTCB
+            int currentTCB = getRAMValue(state, getRegisterValue(state, "R8"));
+            String newTaskName = readString(state, currentTCB + 0x34);
+            if (currentTaskName.compareTo(newTaskName) != 0) {
+                println("[vTaskSwitchContext] current task: " + newTaskName, 6);
+                currentTaskName = newTaskName;
+            }
+        }
+
         if (isInterestingInstr(instr, addr)) {
             thread.stepPcodeOp();
             PcodeFrame frame = thread.getFrame();
@@ -735,16 +826,25 @@ public class CubeSatEmulator extends GhidraScript {
         } else {
             thread.stepInstruction();
         }
+        int sp = getRegisterValue(thread.getState(), "SP");
+        if (sp != old_sp) {
+            printStack(thread);
+        }
         printOutputRegisters(thread, addr);
         return 0;
     }
 
     void handleInterrupt() {
         int prio = intc.highestPrio;
+        // Util.println("highestprio: " + prio);
         PcodeExecutorState<byte[]> state = currentThread.getState();
         int sr = getRegisterValue(state, "SR");
+        // Util.println("sr: " + Util.intToHex(sr));
         if (prio != -1) {
-            if (((sr >> (17 + prio)) & 1) == 0) {
+            if (
+                ((sr >> (17 + prio)) & 1) == 0
+                && ((sr >> 16) & 1) == 0
+            ) {
                 callInterruptWrapper(state, prio);
             }
         }
@@ -770,6 +870,10 @@ public class CubeSatEmulator extends GhidraScript {
         };
         Util.setFunctions(pln, pln_alt);
         Util.currentScript = this;
+        log_buffer = new LogBuffer(1000000);
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            log_buffer.dump();
+        }));
 
         PcodeEmulator emu = getInternalPcodeEmulator(currentProgram);
         println("Got internal PcodeEmulator: " + emu.getClass().getName());
@@ -799,13 +903,20 @@ public class CubeSatEmulator extends GhidraScript {
         new TWIM    ( 0xFFFF3C00L, "TWIM1"   , 26);
         new TWIS    ( 0xFFFF4000L, "TWIS0"   , -1);
         new TWIS    ( 0xFFFF4400L, "TWIS1"   , -1);
-        new TC      ( 0xFFFF5800L, "TC1"     , 33);
+        new TC      ( 0xFFFF5800L, "TC1"     , 34);
 
         new MPU3300 ( "MPU3300", 0x68 );
         new HMC5843 ( "HMC5843", 0x1E );
 
         Device.linkAllDevices();
         intc = (INTC) Device.findDevice("INTC");
+
+        tc0 = (TC) Device.findDevice("TC0");
+        tc1 = (TC) Device.findDevice("TC1");
+        
+        tc0.startClockThread();
+        tc1.startClockThread();
+
         system_register = new SystemRegister();
 
         var thread = emu.newThread("main");
@@ -816,8 +927,7 @@ public class CubeSatEmulator extends GhidraScript {
 
         Util.setVar("register", 0x0l, 0x610000);
 
-        while (currentInstructionCount < DETAIL_UNTIL) {
-        // while (true) {
+        while (true) {
             if (thread.getCounter().getOffset() == 0x8001db06l
              || thread.getCounter().getOffset() == 0x8001db0al
              || thread.getCounter().getOffset() == 0x8001db0el
@@ -843,20 +953,28 @@ public class CubeSatEmulator extends GhidraScript {
              || thread.getCounter().getOffset() == 0x8001db5el
              || thread.getCounter().getOffset() == 0x8001db62l
              || thread.getCounter().getOffset() == 0x8001db66l
+             || thread.getCounter().getOffset() == 0x8001dc64l
+             || thread.getCounter().getOffset() == 0x8001dc68l
+             || thread.getCounter().getOffset() == 0x8001dc6cl
             ) {
                 currentPhase++;
                 currentInstructionCount = 0;
             }
-            println("P" + currentPhase + " #" + currentInstructionCount + ": PC = " + thread.getCounter(), 1);
-            if (currentInstructionCount % 1000 == 0) {
+            String funcname = getCurrentFunctionName();
+            println("P" + currentPhase + " #" + currentInstructionCount + ": PC = " + thread.getCounter() + " (" + funcname + ")", 1);
+            if (currentInstructionCount % 10000 == 0) {
                 System.err.println("P" + currentPhase + " #" + currentInstructionCount + ": PC = " + thread.getCounter());
             }
+            int sp = getRegisterValue(currentThread.getState(), "SP");
+            Util.println("sp: " + Util.intToHex(sp));
             if (executeInstr(thread) == -1) {
                 return;
             }
             currentInstructionCount++;
             handleInterrupt();
             if (exitCondition()) {
+                tc0.exitClockThread();
+                tc1.exitClockThread();
                 return;
             }
         }

@@ -1,12 +1,29 @@
 package hw;
 
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+
+import etc.Util;
+
 public class TC extends MmioDevice {
 
     private static class Channel {
         int CCR, CMR, CV, RA, RB, RC, SR, IER, IDR, IMR;
+        boolean clk;
+        TC tc;
+        int num;
 
         Channel() {
             CCR = CMR = CV = RA = RB = RC = SR = IER = IDR = IMR = 0;
+        }
+
+        public void checkInterrupt() {
+            if ((SR & 0xff) == 0) {
+                tc.intc.clearInterrupt(tc.group, num);
+            } else {
+                tc.intc.raiseInterrupt(tc.group, num);
+            }
         }
     }
 
@@ -15,20 +32,75 @@ public class TC extends MmioDevice {
     // Block registers
     int BCR, BMR, FEATURES, VERSION;
 
+    private INTC intc;
+    private ScheduledExecutorService scheduler;
+    public boolean manual_tick;
+
     public TC(long baseAddr, String name, int group) {
         super(baseAddr, name, group);
 
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < 3; i++) {
             ch[i] = new Channel();
+            ch[i].num = i;
+            ch[i].tc = this;
+        }
 
         BCR = 0;
         BMR = 0;
         FEATURES = 0;
         VERSION = 0;
     }
-    
+
+    public void startClockThread() {
+        scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "osc-32khz");
+            t.setDaemon(true); // 핵심: main이 죽으면 JVM이 종료될 수 있게
+            return t;
+        });
+        Runnable task = () -> tick();
+        scheduler.scheduleAtFixedRate(task, 0, 31, TimeUnit.MICROSECONDS); // 32KHz oscillator
+    }
+
+    public void exitClockThread() {
+        scheduler.shutdown();
+    }
+
+    private void tick() {
+        for (int i = 0; i < ch.length; i++) {
+            Channel c = ch[i];
+            if ((c.SR >> 16 & 1) == 1) {
+                if (c.CV == 0xffff) {
+                    c.SR |= 1;
+                    Util.println("[TC Channel " + i + "] overloaded");
+                    c.checkInterrupt();
+                    c.CV = 0;
+                } else if (c.CV == c.RC - 1) {
+                    c.SR |= 1 << 4;
+                    Util.println("[TC Channel " + i + "] RC Compare occurred");
+                    c.checkInterrupt();
+                    c.CV = 0;
+                } else {
+                    c.CV += 1;
+                }
+            }
+        }
+    }
+
+    public void manualTick() {
+        for (int i = 0; i < ch.length; i++) {
+            Channel c = ch[i];
+            if ((c.SR >> 16 & 1) == 1) {
+                c.SR |= 1 << 4;
+                Util.println("[TC Channel " + i + "] manual tick occurred");
+                c.checkInterrupt();
+            }
+        }
+    }
+
     @Override
-    protected void link() {}
+    protected void link() {
+        intc = (INTC) Device.findDevice("INTC");
+    }
 
     @Override
     protected boolean onWrite(int ofs, int val) {
@@ -40,7 +112,21 @@ public class TC extends MmioDevice {
         if (channel < 3) {
             Channel c = ch[channel];
             switch (off) {
-                case 0x00: c.CCR = val; return true;
+                case 0x00:
+                    c.CCR = val;
+                    int clken = val & 1;
+                    int clkdis = (val & 2) >> 1;
+                    if (clkdis == 1) {
+                        c.clk = false;
+                        c.SR &= ~(1 << 16);
+                        c.checkInterrupt();
+                    } else if (clken == 1) {
+                        c.clk = true;
+                        System.err.println("[TC Channel " + channel + "] enabled");
+                        c.SR |= 1 << 16;
+                        c.checkInterrupt();
+                    }
+                    return true;
                 case 0x04: c.CMR = val; return true;
                 case 0x14: c.RA  = val; return true;
                 case 0x18: c.RB  = val; return true;
@@ -85,7 +171,11 @@ public class TC extends MmioDevice {
                 case 0x14: return c.RA;
                 case 0x18: return c.RB;
                 case 0x1C: return c.RC;
-                case 0x20: return c.SR;
+                case 0x20:
+                    int sr = c.SR;
+                    c.SR &= ~0xff;
+                    c.checkInterrupt();
+                    return sr;
                 case 0x24: return null;        // IER write-only
                 case 0x28: return null;        // IDR write-only
                 case 0x2C: return c.IMR;

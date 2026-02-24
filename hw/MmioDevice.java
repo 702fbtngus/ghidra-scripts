@@ -27,19 +27,15 @@ public abstract class MmioDevice extends Device {
         this(base, name, group, 0x400l);
     }
 
-    public MmioDevice(long base, String name) {
-        this(base, name, -1, 0x400l);
-    }
-
     public static final MmioDevice findMmioDevice(long addr) {
         for (Device dv : Device.registry) {
             if (dv instanceof MmioDevice mdv) {
                 if (!mdv.contains(addr)) continue;
-                Util.println("findMmioDevice " + Util.intToHex(addr) + ": " + mdv.name);
+                Util.println("findMmioDevice " + Util.longToHex(addr) + ": " + mdv.name);
                 return mdv;
             }
         }
-        Util.println("findMmioDevice " + Util.intToHex(addr) + ": null");
+        Util.println("findMmioDevice " + Util.longToHex(addr) + ": null");
         return null;
     }
 
@@ -47,21 +43,21 @@ public abstract class MmioDevice extends Device {
         MmioDevice mdv = findMmioDevice(addr);
         if (mdv == null) return null;
         int off = (int)(addr - mdv.base);
-        Util.println("Store to " + mdv.name + " @ " + Util.intToHex(addr), 2);
+        Util.println("Store to " + mdv.name + " @ " + Util.longToHex(addr), 2);
         return mdv.store(off, node);
     }
     public static final Integer storeToMmioDeviceAddr(long addr, long src) {
         MmioDevice mdv = findMmioDevice(addr);
         if (mdv == null) return null;
         int off = (int)(addr - mdv.base);
-        Util.println("Store to " + mdv.name + " @ " + Util.intToHex(addr), 2);
+        Util.println("Store to " + mdv.name + " @ " + Util.longToHex(addr), 2);
         return mdv.store(off, src);
     }
     public static final Integer storeToMmioDeviceAddr(long addr, long src, int size) {
         MmioDevice mdv = findMmioDevice(addr);
         if (mdv == null) return null;
         int off = (int)(addr - mdv.base);
-        Util.println("Store to " + mdv.name + " @ " + Util.intToHex(addr), 2);
+        Util.println("Store to " + mdv.name + " @ " + Util.longToHex(addr), 2);
         return mdv.store(off, src, size);
     }
     
@@ -69,21 +65,21 @@ public abstract class MmioDevice extends Device {
         MmioDevice mdv = findMmioDevice(addr);
         if (mdv == null) return null;
         int off = (int)(addr - mdv.base);
-        Util.println("Load from " + mdv.name + " @ " + Util.intToHex(addr), 2);
+        Util.println("Load from " + mdv.name + " @ " + Util.longToHex(addr), 2);
         return mdv.load(off, node);
     }
     public static final Integer loadFromMmioDeviceAddr(long addr, long dest) {
         MmioDevice mdv = findMmioDevice(addr);
         if (mdv == null) return null;
         int off = (int)(addr - mdv.base);
-        Util.println("Load from " + mdv.name + " @ " + Util.intToHex(addr), 2);
+        Util.println("Load from " + mdv.name + " @ " + Util.longToHex(addr), 2);
         return mdv.load(off, dest);
     }
     public static final Integer loadFromMmioDeviceAddr(long addr, long dest, int size) {
         MmioDevice mdv = findMmioDevice(addr);
         if (mdv == null) return null;
         int off = (int)(addr - mdv.base);
-        Util.println("Load from " + mdv.name + " @ " + Util.intToHex(addr), 2);
+        Util.println("Load from " + mdv.name + " @ " + Util.longToHex(addr), 2);
         return mdv.load(off, dest, size);
     }
     

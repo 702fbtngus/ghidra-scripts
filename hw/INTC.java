@@ -1,5 +1,7 @@
 package hw;
 
+import etc.Util;
+
 public class INTC extends MmioDevice {
 
     // 64 Interrupt Priority Registers (RW)
@@ -14,9 +16,9 @@ public class INTC extends MmioDevice {
     public int highestPrio = -1;
 
 
-    public INTC(long baseAddr, String name) {
+    public INTC(long baseAddr, String name, int group) {
 
-        super(baseAddr, name);   // INTC base & size (0x000~0x20C)
+        super(baseAddr, name, group);   // INTC base & size (0x000~0x20C)
 
         resetRegisters();
     }
@@ -80,6 +82,7 @@ public class INTC extends MmioDevice {
         // --------------------
         if (ofs < 0x100) {
             int index = ofs >>> 2;
+            Util.println("INTC IPR index = " + index);
             if (index < 64)
                 return IPR[index];
             return null;
@@ -90,6 +93,7 @@ public class INTC extends MmioDevice {
         // --------------------
         if (ofs >= 0x100 && ofs < 0x200) {
             int index = (ofs - 0x100) >>> 2;
+            Util.println("INTC IRR index = " + index);
             if (index < 64)
                 return IRR[index];
             return null;
@@ -100,6 +104,7 @@ public class INTC extends MmioDevice {
         // --------------------
         if (ofs >= 0x200 && ofs < 0x210) {
             int index = (0x20c - ofs) >>> 2;
+            Util.println("INTC ICR index = " + index);
             if (index < 4)
                 return ICR[index];
             return null;
@@ -112,17 +117,17 @@ public class INTC extends MmioDevice {
     // ------------------------------------------
     // ⚡ External helper to trigger an interrupt
     // ------------------------------------------
-    public void raiseInterrupt(int irq) {
-        if (irq < 0 || irq >= 64) return;
+    public void raiseInterrupt(int group, int line) {
+        if (group < 0 || group >= 64) return;
 
-        IRR[irq] = 1;
+        IRR[group] |= 1 << line;
         updateHighestPriority();
     }
 
-    public void clearInterrupt(int irq) {
-        if (irq < 0 || irq >= 64) return;
+    public void clearInterrupt(int group, int line) {
+        if (group < 0 || group >= 64) return;
 
-        IRR[irq] = 0;
+        IRR[group] &= ~(1 << line);
         updateHighestPriority();
     }
 
@@ -149,9 +154,7 @@ public class INTC extends MmioDevice {
                 bestPrio = prio;
             }
             
-            if (ICR[prio] == 0) {
-                ICR[prio] = irq;
-            }
+            ICR[prio] = irq;
         }
     
         highestPrio = bestPrio;

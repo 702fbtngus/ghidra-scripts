@@ -65,7 +65,11 @@ public class Util {
         return result;
     }
 
-    public static String intToHex(long addr) {
+    public static String intToHex(int addr) {
+        return String.format("%08X", addr);
+    }
+
+    public static String longToHex(long addr) {
         return String.format("%08X", addr);
     }
     
@@ -83,7 +87,7 @@ public class Util {
     public static int byteArrayToInt(byte[] b) {
         int result = 0;
         for (int i = 0; i < b.length; i++) {
-            result |= (b[i] & 0xFF) << (8 * (3-i));
+            result |= (b[i] & 0xFF) << (8 * (b.length - 1 -i));
         }
         return result;
     }
