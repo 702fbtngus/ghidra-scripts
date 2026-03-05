@@ -17,6 +17,8 @@ public class TWIM extends MmioDevice {
     static final int SR_ANAK   = 1 << 8;
     static final int SR_DNAK   = 1 << 9;
 
+    static final int CMDR_NBYTES   = 0xff << 16;
+
     private INTC intc;
 
     public TWIM(long baseAddr, String name, int group) {
@@ -54,7 +56,6 @@ public class TWIM extends MmioDevice {
 
             case 0x0C: // CMDR
                 CMDR = val;
-                checkTransfer();
                 return true;
 
             case 0x10: // NCMDR
@@ -63,7 +64,6 @@ public class TWIM extends MmioDevice {
 
             case 0x18: // THR
                 THR = val & 0xFF;
-                SR &= ~SR_TXRDY;
                 checkTransfer();
                 return true;
 
@@ -119,41 +119,12 @@ public class TWIM extends MmioDevice {
         SR &= ~(SR_CCOMP | SR_IDLE);
         // state = State.START;
         if ((SR & SR_TXRDY) != 0) {
+            SR &= ~SR_TXRDY;
             completeTx();
         }
         // stepFSM();
         evaluateInterrupt();
     }
-
-    // private void stepFSM() {
-    //     switch (state) {
-    //         case START:
-    //             if ((CMDR & (1 << 0)) != 0) {   // READ
-    //                 state = State.RX;
-    //             } else {
-    //                 state = State.TX;
-    //             }
-    //             stepFSM();
-    //             break;
-
-    //         case TX:
-    //             completeTx();
-    //             break;
-
-    //         case RX:
-    //             completeRx();
-    //             break;
-
-    //         case STOP:
-    //             SR |= SR_CCOMP | SR_IDLE | SR_TXRDY;
-    //             state = State.IDLE;
-    //             evaluateInterrupt();
-    //             break;
-
-    //         default:
-    //             break;
-    //     }
-    // }
 
     private void completeTx() {
         int sadr = (CMDR & 0b111111111) >>> 1;
