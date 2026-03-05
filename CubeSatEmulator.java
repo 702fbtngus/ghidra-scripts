@@ -8,10 +8,13 @@
 
 import java.io.File;
 import java.io.FileWriter;
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.function.BiFunction;
 
 import ghidra.app.emulator.AdaptedEmulator;
@@ -33,6 +36,7 @@ import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.pcode.PcodeOp;
 import etc.LogBuffer;
+import etc.TaskManager;
 import etc.Util;
 import ghidra.pcode.emu.AbstractPcodeMachine;
 import ghidra.program.model.address.AddressFormatException;
@@ -56,6 +60,7 @@ public class CubeSatEmulator extends GhidraScript {
         "userop.log",
         "storeload.log",
         "thread.log",
+        "tasks.log",
         "temp.log",
     };
 
@@ -64,6 +69,7 @@ public class CubeSatEmulator extends GhidraScript {
     public int currentInstructionCount = 0;
     public int currentPhase = 0;    
     public PrintWriter[] pw;
+    public Map<String, PrintWriter> taskpw = new HashMap<>();
     public PcodeThread<byte[]> currentThread = null;
     public PcodeFrame currentFrame = null;
     public INTC intc;
@@ -71,7 +77,14 @@ public class CubeSatEmulator extends GhidraScript {
     public TC tc1;
 
     public String currentTaskName = "";
+    public int currentNumDelayedTasks = 0;
+    public int currentNumSuspendedTasks = 0;
+    public int currentSchedulerSuspended = 0;
+    public int[] currentNumReadyTasks = new int[5];
+    public int[] currentPxIndex = new int[5];
+    public int currentTopReadyPriority = 0;
 
+    public boolean scalled = false;
     public boolean interrupted = false;
     
     public LogBuffer log_buffer;
@@ -120,10 +133,35 @@ public class CubeSatEmulator extends GhidraScript {
         return func.getName();
     }
 
+    public void print_task(String s) {
+        String taskName = currentTaskName;
+
+        if (interrupted || scalled || currentTaskName == "") {
+            // taskName = "kernel";
+            return;
+        }
+
+        if (!taskpw.containsKey(taskName)) {
+            String filename = String.format("%s/tasklog/%s.log", getSourceFile().getParentFile().getAbsolutePath(), taskName);
+            File outFile = new File(filename);
+            try {
+                outFile.createNewFile();
+                taskpw.put(taskName, new PrintWriter(new FileWriter(outFile)));
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
+        taskpw.get(taskName).println(s);
+    }
+
     public void print_inner(String s, int i) {
         if (printerMask(i)) {
             if (i > 0 && pw.length > i) {
                 pw[i].println(s);
+                if (i == 1) {
+                    print_task(s);
+                }
             } else if (i == -1) {
                 pw[pw.length - 1].println(s);
             } else if (i == 0) {
@@ -135,7 +173,9 @@ public class CubeSatEmulator extends GhidraScript {
     public void println(String s, int i) {
         String funcname = getCurrentFunctionName();
         String s1 = s + " (P" + currentPhase + " #" + currentInstructionCount + ", " + funcname + ")";
-        if (i != 0) {
+        if (i == 7) {
+            print_inner(s, i);
+        } else if (i != 0) {
             print_inner(s1, i);
         }
         print_inner(s, 0);
@@ -263,8 +303,8 @@ public class CubeSatEmulator extends GhidraScript {
         // SR[I0M] = 1;
         // PC = EVBA + INTERRUPT_VECTOR_OFFSET;
         
-        println("callInterruptWrapper " + i);
         interrupted = true;
+        println("interrupted", 1);
         int sp = getRegisterValue(state, "SP");
 
         sp -= 4;
@@ -420,11 +460,14 @@ public class CubeSatEmulator extends GhidraScript {
                     setRegisterValue(state, "PC", getRegisterValue(state, "LR"));
             }
             finishFrame(state);
+            scalled = false;
         }
 
         @PcodeUserop
         public void SupervisorCallSetup(@OpState PcodeExecutorState<byte[]> state) {
             println("SupervisorCallSetup", 4);
+            println("scalled", 1);
+            scalled = true;
             
             int sr = getRegisterValue(state, "SR");
             int mode = (sr >> 22) & 0x7;
@@ -466,6 +509,11 @@ public class CubeSatEmulator extends GhidraScript {
         @PcodeUserop
         public void doSleep(@OpState PcodeExecutorState<byte[]> state, int i) {
             println("doSleep", 4);
+        }
+
+        @PcodeUserop
+        public void CoprocessorOp(@OpState PcodeExecutorState<byte[]> state, int i1, int i2, int i3, int i4, int i5) {
+            println("CoprocessorOp", 4);
         }
     }
 
@@ -660,6 +708,75 @@ public class CubeSatEmulator extends GhidraScript {
             }
             return -1;
         }
+        if (isStore) {
+            // if (a == 0x1398) {
+            //     PcodeExecutorState<byte[]> state = thread.getState();
+            //     int currentTCB = getRAMValue(state, 0x1398);
+            //     if (currentTCB != 0) {
+            //         String newTaskName = readString(state, currentTCB + 0x34);
+            //         if (currentTaskName.compareTo(newTaskName) != 0) {
+            //             int currentTick = getRAMValue(state, 0x13a0);
+            //             println("task switched: " + newTaskName + " (current tickCount: " + currentTick + ")", 6);
+            //             TaskManager.switchTask(currentTaskName, newTaskName);
+            //             currentTaskName = newTaskName;
+            //         }
+            //     }
+            //     return 0;
+            // }
+            for (int tcb: TaskManager.getAllTCBs()) {
+                if (a == tcb + 0x2c) {
+                    String taskName = readString(thread.getState(), tcb + 0x34);
+                    int prio = getRAMValue(thread.getState(), tcb + 0x2c);
+                    println(String.format("addr: %s", a), 6);
+                    println("Priority of " + taskName + " changed to " + prio, 6);
+                    TaskManager.changePrio(taskName, prio);
+                    return 0;
+                }
+                if (a == tcb + 0x4) {
+                    // String taskName = readString(thread.getState(), tcb + 0x34);
+                    // int time = getRAMValue(thread.getState(), tcb + 0x4);
+                    // println("" + taskName + " delayed until " + time, 6);
+                }
+                if (a == tcb + 0x14) {
+                    String taskName = readString(thread.getState(), tcb + 0x34);
+                    int container = getRAMValue(thread.getState(), tcb + 0x14);
+                    // int delayedTaskList = getRAMValue(thread.getState(), 0x1344);
+                    switch (container) {
+                        case 0x0:
+                            break;
+                        case 0x13e8:
+                        case 0x13fc:
+                        case 0x1410:
+                        case 0x1424:
+                        case 0x1438:
+                            int priority = (container - 0x13e8) / 0x14;
+                            println("State of " + taskName + ": ready (priority: " + priority + ")", 6);
+                            TaskManager.readyTask(taskName, priority);
+                            break;
+                        case 0x1470:
+                            int time = getRAMValue(thread.getState(), tcb + 0x4);
+                            println("State of " + taskName + ": delayed until " + Util.intToHex(time), 6);
+                            TaskManager.delayTask(taskName, time);
+                            break;
+                        case 0x13bc:
+                            println("State of " + taskName + ": suspended", 6);
+                            TaskManager.suspendTask(taskName);
+                            break;
+                        case 0x13d0:
+                            println("State of " + taskName + ": waiting termination", 6);
+                            TaskManager.terminateTask(taskName);
+                            break;
+                        default:
+                            println("Container of " + taskName + " changed to " + Util.intToHex(container), 6);
+                            break;
+                    }
+                }
+                // if (a == tcb + 0x18) {
+                //     String taskName = readString(thread.getState(), tcb + 0x34);
+                //     println("" + taskName + " suspended", 6);
+                // }
+            }
+        }
         return 0;
     }
 
@@ -700,6 +817,7 @@ public class CubeSatEmulator extends GhidraScript {
         if (detail) {
             printAllRegisters(thread);
         }
+        PcodeExecutorState<byte[]> state = thread.getState();
         
         // switch (currentInstructionCount) {
         //     case 40206:
@@ -712,31 +830,106 @@ public class CubeSatEmulator extends GhidraScript {
         //         break;
         // }
 
-        adjustInstructionCount(instr, addr);
-
-        PcodeExecutorState<byte[]> state = thread.getState();
         int old_sp = getRegisterValue(state, "SP");
 
-        if (addr.getOffset() == 0x8002c31cl) {
-            // gs_thread_create
-            int np = getRegisterValue(state, "R12");
-            // int func = getRegisterValue(state, "R11");
-            println("[gs_thread_create] " + readString(state, np), 6);
-            // for (int i = 0; i < 10; i++) {
-            //     println("*" + Util.intToHex(np) + " = " + Util.intToHex(getRAMValue(state, np)), 6);
-            //     np += 4;
-            // }
-        }
 
-        if (addr.getOffset() == 0x8002f8f2l) {
+        if (addr.getOffset() == 0x8002f900l) {
             // update pxCurrentTCB
-            int currentTCB = getRAMValue(state, getRegisterValue(state, "R8"));
+            // int currentTCB = getRAMValue(state, getRegisterValue(state, "R8"));
+            int currentTCB = getRAMValue(state, 0x1398);
             String newTaskName = readString(state, currentTCB + 0x34);
             if (currentTaskName.compareTo(newTaskName) != 0) {
-                println("[vTaskSwitchContext] current task: " + newTaskName, 6);
+                int currentTick = getRAMValue(state, 0x13a0);
+                println("task switched 2: " + newTaskName + " (current tickCount: " + currentTick + ")", 6);
+                TaskManager.switchTask(currentTaskName, newTaskName);
+                // println("current tickCount: " + currentTick, 6);
                 currentTaskName = newTaskName;
+
             }
         }
+        if (addr.getOffset() == 0x8002fef2l) {
+            // task delete done
+            // int currentTCB = getRAMValue(state, getRegisterValue(state, "R8"));
+            int currentTCB = getRAMValue(state, 0x1398);
+            String taskName = readString(state, currentTCB + 0x34);
+            println("task deleted: " + taskName, 6);
+            TaskManager.deleteTask(taskName);
+        }
+
+        if (addr.getOffset() == 0x80030168l) {
+            // xTaskCreate done
+            int newTCB = getRegisterValue(state, "R4");
+            int prio = getRAMValue(state, newTCB + 0x2c);
+            String taskName = readString(state, newTCB + 0x34);
+            println(String.format("new task created at %s: %s (%s)", newTCB, taskName, prio), 6);
+            TaskManager.createTask(taskName, newTCB, prio);
+        }
+
+        // if (!(interrupted || scalled)) {
+            String funcname = getCurrentFunctionName();
+            println("P" + currentPhase + " #" + currentInstructionCount + ": PC = " + thread.getCounter() + " (" + funcname + ")", 1);
+        // }
+
+        // int numDelayedTasks = getRAMValue(state, getRAMValue(state, 0x13b4));
+        // if (numDelayedTasks != currentNumDelayedTasks) {
+        //     println("# delayed tasks: " + currentNumDelayedTasks + " -> " + numDelayedTasks, 6);
+        //     currentNumDelayedTasks = numDelayedTasks;
+        // }
+        
+        // int numSuspendedTasks = getRAMValue(state, 0x13bc);
+        // if (numSuspendedTasks != currentNumSuspendedTasks) {
+        //     println("# suspended tasks: " + currentNumSuspendedTasks + " -> " + numSuspendedTasks, 6);
+        //     currentNumSuspendedTasks = numSuspendedTasks;
+        // }
+        
+        // int schedulerSuspended = getRAMValue(state, 0x139c);
+        // if (schedulerSuspended != currentSchedulerSuspended) {
+        //     println("# suspended scheduler: " + currentSchedulerSuspended + " -> " + schedulerSuspended, 6);
+        //     currentSchedulerSuspended = schedulerSuspended;
+        // }
+        
+        // int topReadyPriority = getRAMValue(state, 0x13e4);
+        // if (topReadyPriority != currentTopReadyPriority) {
+        //     println("top ready priority: " + currentTopReadyPriority + " -> " + topReadyPriority, 6);
+        //     currentTopReadyPriority = topReadyPriority;
+        // }
+        
+        int[] numReadyTasks = {
+            getRAMValue(state, 0x13e8),
+            getRAMValue(state, 0x13fc),
+            getRAMValue(state, 0x1410),
+            getRAMValue(state, 0x1424),
+            getRAMValue(state, 0x1438),
+        };
+        for (int i = 0; i < numReadyTasks.length; i++) {
+            if (currentNumReadyTasks[i] != numReadyTasks[i]) {
+                println("# ready tasks (priority " + i + "): " + currentNumReadyTasks[i] + " -> " + numReadyTasks[i], 6);
+                currentNumReadyTasks[i] = numReadyTasks[i];
+            }
+        }
+
+        // int[] pxIndex = {
+        //     getRAMValue(state, 0x13ec),
+        //     getRAMValue(state, 0x1400),
+        //     getRAMValue(state, 0x1414),
+        //     getRAMValue(state, 0x1428),
+        //     getRAMValue(state, 0x143c),
+        // };
+        // for (int i = 0; i < pxIndex.length; i++) {
+        //     if (currentPxIndex[i] != pxIndex[i]) {
+        //         println("pxIndex (priority " + i + "): " + currentPxIndex[i] + " -> " + pxIndex[i], 6);
+        //         currentPxIndex[i] = pxIndex[i];
+        //     }
+        // }
+
+        // if (addr.getOffset() == 0x8002c220l) {
+        //     // gs_thread_exit
+        //     int currentTCB = getRAMValue(state, 0x1398);
+        //     String taskName = readString(state, currentTCB + 0x34);
+        //     println("[gs_thread_exit] " + taskName, 6);
+        // }
+
+        adjustInstructionCount(instr, addr);
 
         if (isInterestingInstr(instr, addr)) {
             thread.stepPcodeOp();
@@ -870,7 +1063,17 @@ public class CubeSatEmulator extends GhidraScript {
         };
         Util.setFunctions(pln, pln_alt);
         Util.currentScript = this;
-        log_buffer = new LogBuffer(1000000);
+
+        java.util.function.Supplier<Integer> getCurrentTick = () -> {
+            return getRAMValue(currentThread.getState(), 0x13a0);
+        };
+        TaskManager.getCurrentTick = getCurrentTick;
+        java.util.function.Supplier<String> getCurrentInstr = () -> {
+            return String.format("P%s #%s", currentPhase, currentInstructionCount);
+        };
+        TaskManager.getCurrentInstr = getCurrentInstr;
+
+        log_buffer = new LogBuffer(100000);
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             log_buffer.dump();
         }));
