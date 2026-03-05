@@ -1044,6 +1044,15 @@ public class CubeSatEmulator extends GhidraScript {
         }
     }
 
+    void flushLogs() {
+        for (PrintWriter p: pw) {
+            if (p != null) p.close();
+        }
+        for (PrintWriter p: taskpw.values()) {
+            if (p != null) p.close();
+        }
+    }
+
     @Override
     protected void run() throws Exception {
 
@@ -1077,6 +1086,7 @@ public class CubeSatEmulator extends GhidraScript {
         log_buffer = new LogBuffer(100000);
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             log_buffer.dump();
+            flushLogs();
         }));
 
         PcodeEmulator emu = getInternalPcodeEmulator(currentProgram);
@@ -1182,6 +1192,7 @@ public class CubeSatEmulator extends GhidraScript {
             if (exitCondition()) {
                 tc0.exitClockThread();
                 tc1.exitClockThread();
+                flushLogs();
                 return;
             }
         }
