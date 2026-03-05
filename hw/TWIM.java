@@ -7,8 +7,8 @@ public class TWIM extends MmioDevice {
     int IER, IDR, IMR;
     int SCR, PR, VR;
 
-    enum State { IDLE, START, TX, RX, STOP }
-    State state = State.IDLE;
+    // enum State { IDLE, START, TX, RX, STOP }
+    // State state = State.IDLE;
 
     static final int SR_RXRDY  = 1 << 0;
     static final int SR_TXRDY  = 1 << 1;
@@ -54,7 +54,7 @@ public class TWIM extends MmioDevice {
 
             case 0x0C: // CMDR
                 CMDR = val;
-                startCommand();
+                checkTransfer();
                 return true;
 
             case 0x10: // NCMDR
@@ -64,6 +64,7 @@ public class TWIM extends MmioDevice {
             case 0x18: // THR
                 THR = val & 0xFF;
                 SR &= ~SR_TXRDY;
+                checkTransfer();
                 return true;
 
             case 0x20: // IER
@@ -94,7 +95,9 @@ public class TWIM extends MmioDevice {
             case 0x08: return SMBTR;
             case 0x0C: return CMDR;
             case 0x10: return NCMDR;
-            case 0x14: return RHR;
+            case 0x14:
+                completeRx();
+                return RHR;
             case 0x1C: return SR;
             case 0x28: return IMR;
             case 0x30: return PR;
@@ -108,63 +111,66 @@ public class TWIM extends MmioDevice {
      * ========================= */
 
     private void reset() {
-        state = State.IDLE;
+        // state = State.IDLE;
         SR = SR_IDLE | SR_TXRDY;
     }
 
-    private void startCommand() {
+    private void checkTransfer() {
         SR &= ~(SR_CCOMP | SR_IDLE);
-        state = State.START;
-        stepFSM();
+        // state = State.START;
+        if ((SR & SR_TXRDY) != 0) {
+            completeTx();
+        }
+        // stepFSM();
         evaluateInterrupt();
     }
 
-    private void stepFSM() {
-        switch (state) {
-            case START:
-                if ((CMDR & (1 << 0)) != 0) {   // READ
-                    state = State.RX;
-                } else {
-                    state = State.TX;
-                }
-                stepFSM();
-                break;
+    // private void stepFSM() {
+    //     switch (state) {
+    //         case START:
+    //             if ((CMDR & (1 << 0)) != 0) {   // READ
+    //                 state = State.RX;
+    //             } else {
+    //                 state = State.TX;
+    //             }
+    //             stepFSM();
+    //             break;
 
-            case TX:
-                completeTx();
-                break;
+    //         case TX:
+    //             completeTx();
+    //             break;
 
-            case RX:
-                completeRx();
-                break;
+    //         case RX:
+    //             completeRx();
+    //             break;
 
-            case STOP:
-                SR |= SR_CCOMP | SR_IDLE | SR_TXRDY;
-                state = State.IDLE;
-                evaluateInterrupt();
-                break;
+    //         case STOP:
+    //             SR |= SR_CCOMP | SR_IDLE | SR_TXRDY;
+    //             state = State.IDLE;
+    //             evaluateInterrupt();
+    //             break;
 
-            default:
-                break;
-        }
-    }
+    //         default:
+    //             break;
+    //     }
+    // }
 
     private void completeTx() {
         int sadr = (CMDR & 0b111111111) >>> 1;
         int thr = THR & 0xff;
-        SR |= SR_TXRDY;
         int tx = I2CDevice.sendToI2CDevice(sadr, thr);
-        state = State.STOP;
-        stepFSM();
+        SR |= SR_TXRDY;
+        // state = State.STOP;
+        // stepFSM();
     }
 
     private void completeRx() {
         int sadr = (CMDR & 0b111111111) >>> 1;
-        SR |= SR_TXRDY;
+        // SR |= SR_TXRDY;
         int res = I2CDevice.recvFromI2CDevice(sadr);
         RHR = res;
-        state = State.STOP;
-        stepFSM();
+        // state = State.STOP;
+        // stepFSM();
     }
 
     private void evaluateInterrupt() {
