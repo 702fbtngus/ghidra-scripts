@@ -8,6 +8,8 @@ public abstract class I2CDevice extends Device {
     // 🔥 자동 등록되는 I2CDevice 전역 리스트
     // ------------------------------
     public final int addr;
+    public int[] response;
+    public int respIndex;
 
     public I2CDevice(String name, int addr) {
         super(name);
@@ -32,12 +34,13 @@ public abstract class I2CDevice extends Device {
     public static final Integer sendToI2CDevice(int addr, int value) {
         I2CDevice mdv = findI2CDevice(addr);
         if (mdv == null) return null;
-        Util.println("Send " + value + " to I2CDevice " + mdv.name + " @ " + Util.intToHex(addr), 2);
+        Util.println("Send to I2CDevice " + mdv.name + " @ " + Util.intToHex(addr) + ": " + value, 2);
         if (!mdv.tx(value)) {
             Util.println(mdv.getClass().getSimpleName() +
-                ": invalid tx value =0x" + Integer.toHexString(value));
+            ": invalid tx value =0x" + Integer.toHexString(value));
             return null;
         }
+        Util.println("Sent successfully", 2);
         return 0;
     }
 
@@ -50,6 +53,7 @@ public abstract class I2CDevice extends Device {
             Util.println(mdv.getClass().getSimpleName() + ": invalid rx");
             return null;
         }
+        Util.println("Received successfully:" + value, 2);
         return value;
     }
 
@@ -57,5 +61,8 @@ public abstract class I2CDevice extends Device {
     // Subclass responsibility
     // ------------------------------
     protected abstract boolean tx(int value);
-    protected abstract Integer rx();
+
+    protected Integer rx() {
+        return response[respIndex++];
+    };
 }

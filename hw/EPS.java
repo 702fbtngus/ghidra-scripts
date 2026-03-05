@@ -13,9 +13,4 @@ public class EPS extends I2CDevice {
     protected boolean tx(int value) {
         return true;
     }
-
-    @Override
-    protected Integer rx() {
-        return null;
-    }
 }
