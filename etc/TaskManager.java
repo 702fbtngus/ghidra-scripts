@@ -14,6 +14,7 @@ public class TaskManager {
     private static Map<String, Task> taskMap = new LinkedHashMap<>();
     public static Supplier<Integer> getCurrentTick;
     public static Supplier<String> getCurrentInstr;
+    public static int currentLine = 1;
 
     static class Task {
         public int tcb;
@@ -100,7 +101,25 @@ public class TaskManager {
     }
 
     public static void printAllTasks() {
-        String line = "";
+        String line;
+        if (currentLine % 35 == 0) {
+            Util.println("", 7);
+            line = "=";
+            for (Entry<String, Task> entry : taskMap.entrySet()) {
+            // for (Task task : taskMap.values()) {
+                Task task = entry.getValue();
+                String name = entry.getKey();
+                if (name.length() > 4) {
+                    name = name.substring(0, 4);
+                }
+                String taskTitle = String.format("%s (%s)", name, task.priority);
+                line += String.format(" %-8s =", taskTitle);
+            }
+            line = String.format("%26s    %s", "", line);
+            Util.println(line, 7);
+        }
+        
+        line = "";
         char nextSep = '|';
         String realName = null;
         for (Entry<String, Task> entry : taskMap.entrySet()) {
@@ -144,6 +163,7 @@ public class TaskManager {
         //     line += "|";
         // }
         Util.println(line, 7);
+        currentLine++;
     }
 
 }
