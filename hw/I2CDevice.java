@@ -32,7 +32,7 @@ public abstract class I2CDevice extends Device {
     public static final Integer sendToI2CDevice(int addr, int value) {
         I2CDevice mdv = findI2CDevice(addr);
         if (mdv == null) return null;
-        Util.println("Send to I2CDevice " + mdv.name + " @ " + Util.intToHex(addr), 2);
+        Util.println("Send " + value + " to I2CDevice " + mdv.name + " @ " + Util.intToHex(addr), 2);
         if (!mdv.tx(value)) {
             Util.println(mdv.getClass().getSimpleName() +
                 ": invalid tx value =0x" + Integer.toHexString(value));
@@ -44,7 +44,7 @@ public abstract class I2CDevice extends Device {
     public static final Integer recvFromI2CDevice(int addr) {
         I2CDevice mdv = findI2CDevice(addr);
         if (mdv == null) return null;
-        Util.println("Recv from " + mdv.name + " @ " + Util.intToHex(addr), 2);
+        Util.println("Recv from I2CDevice " + mdv.name + " @ " + Util.intToHex(addr), 2);
         Integer value = mdv.rx();
         if (value == null) {
             Util.println(mdv.getClass().getSimpleName() + ": invalid rx");

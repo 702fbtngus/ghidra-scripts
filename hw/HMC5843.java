@@ -16,6 +16,6 @@ public class HMC5843 extends I2CDevice {
 
     @Override
     protected Integer rx() {
-        return 0;
+        return null;
     }
 }

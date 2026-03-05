@@ -101,8 +101,8 @@ public class CubeSatEmulator extends GhidraScript {
     public boolean printerMask(int i) {
         return (
             // true
-            (currentPhase != 25)
-            // && (
+            ((currentPhase != 25)
+            || i == 7)
             //     (currentPhase == 27)
             //     || (currentThread != null && currentThread.getCounter() != null && (currentThread.getCounter().getOffset() == 0x8002f97al || currentThread.getCounter().getOffset() == 0x8002c634l))
             //     // || i == 2 || i == 1 || i == 0
@@ -115,8 +115,9 @@ public class CubeSatEmulator extends GhidraScript {
 
     public boolean exitCondition() {
         return (
-            (currentPhase == 28)
-            // || (currentPhase == 0 && currentInstructionCount > 200000)
+            // (currentPhase == 28)
+            false
+            || (currentPhase == 28 && currentInstructionCount > 2000000)
             // || (currentPhase == 1)
         );
     }
@@ -1110,6 +1111,9 @@ public class CubeSatEmulator extends GhidraScript {
 
         new MPU3300 ( "MPU3300", 0x68 );
         new HMC5843 ( "HMC5843", 0x1E );
+        new EPS ( "EPS", 0x2B );
+        new UTX ( "UTX", 0x61 );
+        new VRX ( "VRX", 0x60 );
 
         Device.linkAllDevices();
         intc = (INTC) Device.findDevice("INTC");
@@ -1164,9 +1168,9 @@ public class CubeSatEmulator extends GhidraScript {
                 currentInstructionCount = 0;
             }
             String funcname = getCurrentFunctionName();
-            println("P" + currentPhase + " #" + currentInstructionCount + ": PC = " + thread.getCounter() + " (" + funcname + ")", 1);
             if (currentInstructionCount % 10000 == 0) {
-                System.err.println("P" + currentPhase + " #" + currentInstructionCount + ": PC = " + thread.getCounter());
+                // System.err.println("P" + currentPhase + " #" + currentInstructionCount + ": PC = " + thread.getCounter());
+                System.err.println(String.format("P%s #%s: PC = %s (%s %s %s)", currentPhase, currentInstructionCount, thread.getCounter(), scalled, interrupted, currentTaskName));
             }
             int sp = getRegisterValue(currentThread.getState(), "SP");
             Util.println("sp: " + Util.intToHex(sp));

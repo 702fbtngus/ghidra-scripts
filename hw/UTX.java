@@ -1,8 +1,8 @@
 package hw;
 
-public class MPU3300 extends I2CDevice {
+public class UTX extends I2CDevice {
 
-    public MPU3300(String name, int addr) {
+    public UTX(String name, int addr) {
         super(name, addr);
     }
     
