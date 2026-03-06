@@ -84,8 +84,8 @@ public class CubeSatEmulator extends GhidraScript {
     public int[] currentPxIndex = new int[5];
     public int currentTopReadyPriority = 0;
 
-    public boolean scalled = false;
     public boolean interrupted = false;
+    public boolean userMode = false;
     
     public LogBuffer log_buffer;
     
@@ -102,7 +102,7 @@ public class CubeSatEmulator extends GhidraScript {
         return (
             // true
             ((currentPhase != 25)
-            || i == 7)
+            || i == 6 || i == 7)
             //     (currentPhase == 27)
             //     || (currentThread != null && currentThread.getCounter() != null && (currentThread.getCounter().getOffset() == 0x8002f97al || currentThread.getCounter().getOffset() == 0x8002c634l))
             //     // || i == 2 || i == 1 || i == 0
@@ -137,7 +137,7 @@ public class CubeSatEmulator extends GhidraScript {
     public void print_task(String s) {
         String taskName = currentTaskName;
 
-        if (interrupted || scalled || currentTaskName == "") {
+        if (interrupted || (!userMode) || currentTaskName == "") {
             // taskName = "kernel";
             return;
         }
@@ -325,6 +325,10 @@ public class CubeSatEmulator extends GhidraScript {
         sp -= 4;
         storeToAddr(state, sp, getRegisterValue(state, "SR"));
 
+        if (userMode) {
+            TaskManager.setUserAddr(currentTaskName, sp);
+        }
+
         setRegisterValue(state, "SP", sp);
 
         int sr = getRegisterValue(state, "SR");
@@ -375,6 +379,7 @@ public class CubeSatEmulator extends GhidraScript {
             // SREG[L] ← 0;
 
             int sp = getRegisterValue(state, "SP");
+            userMode = TaskManager.getUserAddr(currentTaskName) == sp;
             int sr = getRegisterValue(state, "SR");
             setRegisterValue(state, "SR", loadFromAddr(state, sp));
             sp += 4;
@@ -451,6 +456,8 @@ public class CubeSatEmulator extends GhidraScript {
 
                 break;
                 case 0b001:
+                    int userAddr = TaskManager.getUserAddr(currentTaskName);
+                    userMode = userAddr == sp || userAddr + 0x18 == sp;
                     setRegisterValue(state, "SR", loadFromAddr(state, sp));
                     sp += 4;
                     setRegisterValue(state, "PC", loadFromAddr(state, sp));
@@ -461,14 +468,11 @@ public class CubeSatEmulator extends GhidraScript {
                     setRegisterValue(state, "PC", getRegisterValue(state, "LR"));
             }
             finishFrame(state);
-            scalled = false;
         }
 
         @PcodeUserop
         public void SupervisorCallSetup(@OpState PcodeExecutorState<byte[]> state) {
             println("SupervisorCallSetup", 4);
-            println("scalled", 1);
-            scalled = true;
             
             int sr = getRegisterValue(state, "SR");
             int mode = (sr >> 22) & 0x7;
@@ -487,6 +491,11 @@ public class CubeSatEmulator extends GhidraScript {
                     sp -= 4;
                     storeToAddr(state, sp, sr);
                     setRegisterValue(state, "SP", sp);
+                    
+                    if (userMode) {
+                        TaskManager.setUserAddr(currentTaskName, sp);
+                        userMode = false;
+                    }
 
                     sr &= ~(0b111 << 22);
                     sr |= 0b001 << 22;
@@ -675,13 +684,14 @@ public class CubeSatEmulator extends GhidraScript {
         }
     }
 
-    public void printStack(PcodeThread<byte[]> thread) {
+    public void printStack() {
         println(">>> Stack:");
-        int sp = getRegisterValue(thread.getState(), "SP");
         // for (int i = 20; i >= 0; i--) {
+        int sp = getRegisterValue(currentThread.getState(), "SP");
+
         for (int i = 0; i < 8; i++) {
             int addr = sp + 4 * i;
-            println("  *0x" + Util.intToHex(addr) + " = " + Util.intToHex(getRAMValue(thread.getState(), addr)));
+            println("  *0x" + Util.intToHex(addr) + " = " + Util.intToHex(getRAMValue(currentThread.getState(), addr)));
         }
     }
 
@@ -710,20 +720,20 @@ public class CubeSatEmulator extends GhidraScript {
             return -1;
         }
         if (isStore) {
-            // if (a == 0x1398) {
-            //     PcodeExecutorState<byte[]> state = thread.getState();
-            //     int currentTCB = getRAMValue(state, 0x1398);
-            //     if (currentTCB != 0) {
-            //         String newTaskName = readString(state, currentTCB + 0x34);
-            //         if (currentTaskName.compareTo(newTaskName) != 0) {
-            //             int currentTick = getRAMValue(state, 0x13a0);
-            //             println("task switched: " + newTaskName + " (current tickCount: " + currentTick + ")", 6);
-            //             TaskManager.switchTask(currentTaskName, newTaskName);
-            //             currentTaskName = newTaskName;
-            //         }
-            //     }
-            //     return 0;
-            // }
+            if (a == 0x1398) {
+                PcodeExecutorState<byte[]> state = thread.getState();
+                int currentTCB = getRAMValue(state, 0x1398);
+                if (currentTCB != 0) {
+                    String newTaskName = readString(state, currentTCB + 0x34);
+                    if (currentTaskName.compareTo(newTaskName) != 0) {
+                        int currentTick = getRAMValue(state, 0x13a0);
+                        println("task switched: " + newTaskName + " (current tickCount: " + currentTick + ")", 6);
+                        TaskManager.switchTask(currentTaskName, newTaskName);
+                        currentTaskName = newTaskName;
+                    }
+                }
+                return 0;
+            }
             for (int tcb: TaskManager.getAllTCBs()) {
                 if (a == tcb + 0x2c) {
                     String taskName = readString(thread.getState(), tcb + 0x34);
@@ -862,13 +872,14 @@ public class CubeSatEmulator extends GhidraScript {
             int newTCB = getRegisterValue(state, "R4");
             int prio = getRAMValue(state, newTCB + 0x2c);
             String taskName = readString(state, newTCB + 0x34);
+            int pxStack = getRAMValue(state, newTCB);
+            int pxTopOfStack = getRAMValue(state, newTCB + 0x30);
             println(String.format("new task created at %s: %s (%s)", newTCB, taskName, prio), 6);
-            TaskManager.createTask(taskName, newTCB, prio);
+            println(String.format("pxStack: 0x%x, pxTopOfStack: 0x%x", pxStack, pxTopOfStack), 6);
+            TaskManager.createTask(taskName, newTCB, prio, pxStack + 0x24);
         }
-
-        // if (!(interrupted || scalled)) {
+        
             String funcname = getCurrentFunctionName();
-            println("P" + currentPhase + " #" + currentInstructionCount + ": PC = " + thread.getCounter() + " (" + funcname + ")", 1);
         // }
 
         // int numDelayedTasks = getRAMValue(state, getRAMValue(state, 0x13b4));
@@ -931,6 +942,13 @@ public class CubeSatEmulator extends GhidraScript {
         // }
 
         adjustInstructionCount(instr, addr);
+
+        if (addr.getOffset() == 0x8003bb88l) {
+            // Entered _vfprintf_r
+            Util.println("_vfprintf_r called");
+            thread.setCounter(toAddr(getRegisterValue(state, "LR")));
+            currentFrame.finishAsBranch();
+        }
 
         if (isInterestingInstr(instr, addr)) {
             thread.stepPcodeOp();
@@ -1022,7 +1040,7 @@ public class CubeSatEmulator extends GhidraScript {
         }
         int sp = getRegisterValue(thread.getState(), "SP");
         if (sp != old_sp) {
-            printStack(thread);
+            printStack();
         }
         printOutputRegisters(thread, addr);
         return 0;
@@ -1083,7 +1101,7 @@ public class CubeSatEmulator extends GhidraScript {
         };
         TaskManager.getCurrentInstr = getCurrentInstr;
 
-        log_buffer = new LogBuffer(100000);
+        log_buffer = new LogBuffer(1000000);
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             log_buffer.dump();
             flushLogs();
@@ -1180,7 +1198,7 @@ public class CubeSatEmulator extends GhidraScript {
             String funcname = getCurrentFunctionName();
             if (currentInstructionCount % 10000 == 0) {
                 // System.err.println("P" + currentPhase + " #" + currentInstructionCount + ": PC = " + thread.getCounter());
-                System.err.println(String.format("P%s #%s: PC = %s (%s %s %s)", currentPhase, currentInstructionCount, thread.getCounter(), scalled, interrupted, currentTaskName));
+                System.err.println(String.format("P%s #%s: PC = %s (%s %s)", currentPhase, currentInstructionCount, thread.getCounter(), interrupted, currentTaskName));
             }
             int sp = getRegisterValue(currentThread.getState(), "SP");
             Util.println("sp: " + Util.intToHex(sp));

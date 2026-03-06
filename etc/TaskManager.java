@@ -20,11 +20,13 @@ public class TaskManager {
         public int tcb;
         public int priority;
         public String state;
+        public int userStateAddr;
 
-        public Task(int tcb, int priority) {
+        public Task(int tcb, int priority, int addr) {
             this.tcb = tcb;
             this.priority = priority;
             this.state = "created";
+            this.userStateAddr = addr;
         }
     }
 
@@ -40,11 +42,17 @@ public class TaskManager {
             .toArray();
     }
 
-    public static void createTask(String name, int tcb, int priority) {
-        Task task = new Task(tcb, priority);
+    public static Task newEmptyTask(String name) {
+        Task task = new Task(-1, -1, -1);
         taskMap.put(name, task);
-        // taskList[numTasks] = task;
-        // numTasks++;
+        // printAllTasks();
+        // task.state = "R";
+        return task;
+    }
+
+    public static void createTask(String name, int tcb, int priority, int addr) {
+        Task task = new Task(tcb, priority, addr);
+        taskMap.put(name, task);
         printAllTasks();
         task.state = "R";
     }
@@ -59,7 +67,13 @@ public class TaskManager {
     public static void switchTask(String from, String to) {
         Task fromTask = taskMap.get(from);
         Task toTask = taskMap.get(to);
-        if (fromTask != null && fromTask.state == "RUNNING") {
+        if (fromTask == null) {
+            fromTask = newEmptyTask(to);
+        }
+        if (toTask == null) {
+            toTask = newEmptyTask(to);
+        }
+        if (fromTask.state == "RUNNING") {
             fromTask.state = "R";
         };
         toTask.state = "RUNNING";
@@ -98,6 +112,21 @@ public class TaskManager {
         printAllTasks();
         task.priority = prio;
         task.state = state;
+    }
+    
+    public static int getUserAddr(String name) {
+        Task task = taskMap.get(name);
+        if (task != null) {
+            return task.userStateAddr;
+        }
+        return 0;
+    }
+    
+    public static void setUserAddr(String name, int sp) {
+        Task task = taskMap.get(name);
+        if (task != null) {
+            task.userStateAddr = sp;
+        }
     }
 
     public static void printAllTasks() {
