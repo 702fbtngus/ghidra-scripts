@@ -128,7 +128,7 @@ public class TWIM extends MmioDevice {
 
     private void completeTx() {
         int sadr = (CMDR & 0b111111111) >>> 1;
-        int thr = THR & 0xff;
+        byte thr = (byte) (THR & 0xff);
         int tx = I2CDevice.sendToI2CDevice(sadr, thr);
         SR |= SR_TXRDY;
         // state = State.STOP;
@@ -138,8 +138,8 @@ public class TWIM extends MmioDevice {
     private void completeRx() {
         int sadr = (CMDR & 0b111111111) >>> 1;
         // SR |= SR_TXRDY;
-        int res = I2CDevice.recvFromI2CDevice(sadr);
-        RHR = res;
+        byte res = I2CDevice.recvFromI2CDevice(sadr);
+        RHR = 0xff & res;
         // state = State.STOP;
         // stepFSM();
     }

@@ -10,7 +10,7 @@ public class MPU3300 extends I2CDevice {
     protected void link() {}
 
     @Override
-    protected boolean tx(int value) {
+    protected boolean tx(byte b) {
         return true;
     }
 }
