@@ -103,6 +103,11 @@ public class Util {
     public static int getVar(long addr) {
         return byteArrayToInt(getState().getVar(toAddr(addr), 4, true, Reason.INSPECT));
     }
+
+    public static int getVar(long addr, int size) {
+        return byteArrayToInt(getState().getVar(toAddr(addr), size, true, Reason.INSPECT));
+    }
+
     public static int getVar(String addrSpace, long addr) {
         return getVar(addrSpace, addr, 4);
     }
@@ -114,6 +119,10 @@ public class Util {
 
     public static int getVar(Varnode node) {
         return byteArrayToInt(getState().getVar(node, Reason.INSPECT));
+    }
+
+    public static void setVar(long addr, int value, int size) {
+        getState().setVar(toAddr(addr), size, true, intToByteArray(value, size));
     }
 
     public static void setVar(long addr, int value) {
@@ -131,5 +140,28 @@ public class Util {
 
     public static void setVar(Varnode node, int value) {
         getState().setVar(node, Util.intToByteArray(value, node.getSize()));
+    }
+
+    public enum DataSize {
+        BYTE_SIZE(1),
+        HALFWORD_SIZE(2),
+        WORD_SIZE(4);
+
+        private final int numBytes;
+
+        DataSize(int numBytes) {
+            this.numBytes = numBytes;
+        }
+
+        public int numBytes() {
+            return numBytes;
+        }
+
+        public int valueMask() {
+            if (numBytes == Integer.BYTES) {
+                return -1;
+            }
+            return (1 << (numBytes * 8)) - 1;
+        }
     }
 }

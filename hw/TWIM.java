@@ -1,11 +1,13 @@
 package hw;
 
+import hw.MmioDevice.Register.AccessType;
+
 public class TWIM extends MmioDevice {
 
-    int CR, CWGR, SMBTR, CMDR, NCMDR;
-    int RHR, THR, SR;
-    int IER, IDR, IMR;
-    int SCR, PR, VR;
+    Register CR, CWGR, SMBTR, CMDR, NCMDR;
+    Register RHR, THR, SR;
+    Register IER, IDR, IMR;
+    Register SCR, PR, VR;
 
     // enum State { IDLE, START, TX, RX, STOP }
     // State state = State.IDLE;
@@ -17,19 +19,25 @@ public class TWIM extends MmioDevice {
     static final int SR_ANAK   = 1 << 8;
     static final int SR_DNAK   = 1 << 9;
 
-    static final int CMDR_NBYTES   = 0xff << 16;
-
     private INTC intc;
 
     public TWIM(long baseAddr, String name, int group) {
         super(baseAddr, name, group);
 
-        CR = CWGR = SMBTR = CMDR = NCMDR = 0;
-        RHR = THR = 0;
-        SR  = SR_TXRDY;   // datasheet reset state
-        IER = IDR = IMR = 0;
-        SCR = 0;
-        PR = VR = 0;
+        CR = newRegister(0x00, 0x00, AccessType.WRITE_ONLY);
+        CWGR = newRegister(0x04, 0x00, AccessType.READ_WRITE);
+        SMBTR = newRegister(0x08, 0x00, AccessType.READ_WRITE);
+        CMDR = newRegister(0x0C, 0x00, AccessType.READ_WRITE);
+        NCMDR = newRegister(0x10, 0x00, AccessType.READ_WRITE);
+        RHR = newRegister(0x14, 0x00, AccessType.READ_ONLY );
+        THR = newRegister(0x18, 0x00, AccessType.WRITE_ONLY);
+        SR = newRegister(0x1c, 0x02, AccessType.READ_ONLY );
+        IER = newRegister(0x20, 0x00, AccessType.WRITE_ONLY);
+        IDR = newRegister(0x24, 0x00, AccessType.WRITE_ONLY);
+        IMR = newRegister(0x28, 0x00, AccessType.READ_ONLY );
+        SCR = newRegister(0x2c, 0x00, AccessType.WRITE_ONLY);
+        PR = newRegister(0x30, 0x00, AccessType.READ_ONLY );
+        VR = newRegister(0x34, 0x00, AccessType.READ_ONLY );
     }
 
     @Override
@@ -42,47 +50,37 @@ public class TWIM extends MmioDevice {
      * ========================= */
     @Override
     protected boolean onWrite(int ofs, int val) {
-        switch (ofs) {
+        if (!super.onWrite(ofs, val)) {
+            return false;
+        }
 
+        switch (ofs) {
             case 0x00: // CR
-                CR = val;
                 if ((val & 0x1) != 0) {   // SWRST
                     reset();
                 }
-                return true;
-
-            case 0x04: CWGR = val; return true;
-            case 0x08: SMBTR = val; return true;
-
-            case 0x0C: // CMDR
-                CMDR = val;
-                return true;
-
-            case 0x10: // NCMDR
-                NCMDR = val;
-                return true;
+                break;
 
             case 0x18: // THR
-                THR = val & 0xFF;
                 checkTransfer();
-                return true;
+                break;
 
             case 0x20: // IER
-                IMR |= val;
+                IMR.value |= val;
                 evaluateInterrupt();
-                return true;
+                break;
 
             case 0x24: // IDR
-                IMR &= ~val;
+                IMR.value &= ~val;
                 evaluateInterrupt();
-                return true;
+                break;
 
             case 0x2C: // SCR
-                SR &= ~(val & 0x00007f08);   // clear-on-write
+                SR.value &= ~(val & 0x00007f08);   // clear-on-write
                 evaluateInterrupt();
-                return true;
+                break;
         }
-        return false;
+        return true;
     }
 
     /* =========================
@@ -91,19 +89,10 @@ public class TWIM extends MmioDevice {
     @Override
     protected Integer onRead(int ofs) {
         switch (ofs) {
-            case 0x04: return CWGR;
-            case 0x08: return SMBTR;
-            case 0x0C: return CMDR;
-            case 0x10: return NCMDR;
             case 0x14:
                 completeRx();
-                return RHR;
-            case 0x1C: return SR;
-            case 0x28: return IMR;
-            case 0x30: return PR;
-            case 0x34: return VR;
         }
-        return null;
+        return super.onRead(ofs);
     }
 
     /* =========================
@@ -112,14 +101,14 @@ public class TWIM extends MmioDevice {
 
     private void reset() {
         // state = State.IDLE;
-        SR = SR_IDLE | SR_TXRDY;
+        SR.value = SR_IDLE | SR_TXRDY;
     }
 
     private void checkTransfer() {
-        SR &= ~(SR_CCOMP | SR_IDLE);
+        SR.value &= ~(SR_CCOMP | SR_IDLE);
         // state = State.START;
-        if ((SR & SR_TXRDY) != 0) {
-            SR &= ~SR_TXRDY;
+        if ((SR.value & SR_TXRDY) != 0) {
+            SR.value &= ~SR_TXRDY;
             completeTx();
         }
         // stepFSM();
@@ -127,25 +116,25 @@ public class TWIM extends MmioDevice {
     }
 
     private void completeTx() {
-        int sadr = (CMDR & 0b111111111) >>> 1;
-        byte thr = (byte) (THR & 0xff);
-        int tx = I2CDevice.sendToI2CDevice(sadr, thr);
-        SR |= SR_TXRDY;
+        int sadr = (CMDR.value & 0b111111111) >>> 1;
+        byte thrv = (byte) (THR.value & 0xff);
+        int tx = I2CDevice.sendToI2CDevice(sadr, thrv);
+        SR.value |= SR_TXRDY;
         // state = State.STOP;
         // stepFSM();
     }
 
     private void completeRx() {
-        int sadr = (CMDR & 0b111111111) >>> 1;
+        int sadr = (CMDR.value & 0b111111111) >>> 1;
         // SR |= SR_TXRDY;
         byte res = I2CDevice.recvFromI2CDevice(sadr);
-        RHR = 0xff & res;
+        RHR.value = 0xff & res;
         // state = State.STOP;
         // stepFSM();
     }
 
     private void evaluateInterrupt() {
-        if ((SR & IMR) != 0) {
+        if ((SR.value & IMR.value) != 0) {
             intc.raiseInterrupt(group, 0);
         } else {
             intc.clearInterrupt(group, 0);

@@ -1,105 +1,81 @@
 package hw;
 
-public class PDCAChannel {
+import etc.Util.DataSize;
+import hw.MmioDevice.Register;
+import hw.MmioDevice.Register.AccessType;
 
-    int MAR, PSR, TCR, MARR, TCRR, CR, MR, SR, IMR, IER, IDR, ISR;
+public class PDCAChannel extends MmioRegion {
+
+    Register MAR, PSR, TCR, MARR, TCRR, CR, MR, SR, IMR, IER, IDR, ISR;
     public final int ch;
     PDCA pdca;
 
-    public PDCAChannel(int ch, PDCA pdca) {
+    public PDCAChannel(int ch, int base, PDCA pdca) {
+        super(pdca, base, 0x40);
         this.ch = ch;
         this.pdca = pdca;
 
-        MAR = 0;
-        PSR = ch;
-        TCR = 0;
-        MARR = 0;
-        TCRR = 0;
-
-        CR = 0;
-        MR = 0;
-        SR = 0;
-        IMR = 0;
-        IER = 0;
-        IDR = 0;
-        ISR = 0;
+        MAR = newRegister(0x00, 0, AccessType.READ_WRITE);
+        PSR = newRegister(0x04, ch, AccessType.READ_WRITE);
+        TCR = newRegister(0x08, 0, AccessType.READ_WRITE);
+        MARR = newRegister(0x0C, 0, AccessType.READ_WRITE);
+        TCRR = newRegister(0x10, 0, AccessType.READ_WRITE);
+        CR = newRegister(0x14, 0, AccessType.WRITE_ONLY);
+        MR = newRegister(0x18, 0, AccessType.READ_WRITE);
+        SR = newRegister(0x1C, 0, AccessType.READ_ONLY);
+        IER = newRegister(0x20, 0, AccessType.WRITE_ONLY);
+        IDR = newRegister(0x24, 0, AccessType.WRITE_ONLY);
+        IMR = newRegister(0x28, 0, AccessType.READ_ONLY);
+        ISR = newRegister(0x2C, 0, AccessType.READ_ONLY);
     }
 
-    // Called only by PDCA
-    public boolean onWrite(int ofs, int val) {
-
+    @Override
+    protected void afterWrite(int ofs, int value) {
         switch (ofs) {
-            case 0x00: MAR = val; return true;
-            case 0x04: PSR = val; return true;
-
             case 0x08:
-                TCR = val;
                 checkTransferData();
-                return true;
-
-            case 0x0C: MARR = val; return true;
-            case 0x10: TCRR = val; return true;
+                return;
 
             case 0x14:
-                CR = val;
-                
-                if ((CR >> 8 & 1) == 1) {
+                if ((CR.value >> 8 & 1) == 1) {
                     // Clear ISR.TERR
-                    ISR &= ~(1 << 2);
-                };
-                if ((CR >> 1 & 1) == 1) {
+                    ISR.value &= ~(1 << 2);
+                }
+                if ((CR.value >> 1 & 1) == 1) {
                     // Transfer Disable
-                    SR &= ~1;
-                };
-                if ((CR & 1) == 1) {
+                    SR.value &= ~1;
+                }
+                if ((CR.value & 1) == 1) {
                     // Transfer Enable
-                    SR |= 1;
-                };
+                    SR.value |= 1;
+                }
                 checkTransferData();
-                return true;
-
-            case 0x18: MR = val; return true; // RW
-
-            case 0x20: IER = val; return true;
-            case 0x24: IDR = val; return true;
-
-            // RO
-            case 0x1C:
-            case 0x28:
-            case 0x2C:
-                return false;
+                return;
         }
-        return false;
-    }
-
-    public Integer onRead(int ofs) {
-
-        switch (ofs) {
-            case 0x00: return MAR;
-            case 0x04: return PSR;
-            case 0x08: return TCR;
-            case 0x0C: return MARR;
-            case 0x10: return TCRR;
-
-            case 0x18: return MR;
-            case 0x1C: return SR;
-            case 0x28: return IMR;
-            case 0x2C: return ISR;
-        }
-
-        // write-only registers → null
-        return null;
     }
 
     private void checkTransferData() {
         while (
-            (CR & 1) == 1
-            && TCR > 0
+            (CR.value & 1) == 1
+            && TCR.value > 0
         ) {
-            int size = 1 << (MR & 0b11);
-            pdca.transferData(MAR, PSR, size);
-            MAR += size;
-            TCR -= 1;
+            DataSize size;
+            switch (MR.value & 0b11) {
+                case 0:
+                    size = DataSize.BYTE_SIZE;
+                    break;
+                case 1:
+                    size = DataSize.HALFWORD_SIZE;
+                    break;
+                case 2:
+                    size = DataSize.WORD_SIZE;
+                    break;
+                default:
+                    throw new IllegalArgumentException("MR.SIZE = 3 is reserved");
+            }
+            pdca.transferData(MAR.value, PSR.value, size);
+            MAR.value += size.numBytes();
+            TCR.value -= 1;
         }
     }
 }

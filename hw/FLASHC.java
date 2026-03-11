@@ -1,14 +1,16 @@
 package hw;
 
+import hw.MmioDevice.Register.AccessType;
+
 public class FLASHC extends MmioDevice {
 
-    int FCR;        // 0x00 Read/Write
-    int FCMD;       // 0x04 Read/Write
-    int FSR;        // 0x08 Read/Write
-    int PR;         // 0x0C Read-only
-    int VR;         // 0x10 Read-only
-    int FGPFRHI;    // 0x14 Read-only
-    int FGPFRLO;    // 0x18 Read-only
+    Register FCR;        // 0x00 Read/Write
+    Register FCMD;       // 0x04 Read/Write
+    Register FSR;        // 0x08 Read/Write
+    Register PR;         // 0x0C Read-only
+    Register VR;         // 0x10 Read-only
+    Register FGPFRHI;    // 0x14 Read-only
+    Register FGPFRLO;    // 0x18 Read-only
 
     public FLASHC(long baseAddr, String name, int group) {
         super(baseAddr, name, group);
@@ -20,54 +22,22 @@ public class FLASHC extends MmioDevice {
 
     private void resetRegisters() {
         // RW registers reset to 0
-        FCR = 0x00000000;
-        FCMD = 0x00000000;
-
-        // FSR reset value depends on lock bits → set to 0
-        FSR = 0x00000000;
-
-        // Device-specific → set to 0
-        PR = 0;
-        VR = 0;
-
-        // Fuse registers: N/A → set to 0
-        FGPFRHI = 0;
-        FGPFRLO = 0;
+        FCR = newRegister(0x00, 0x00000000, AccessType.READ_WRITE);
+        FCMD = newRegister(0x04, 0x00000000, AccessType.READ_WRITE);
+        FSR = newRegister(0x08, 0x00000000, AccessType.READ_WRITE);
+        PR = newRegister(0x0C, 0, AccessType.READ_ONLY);
+        VR = newRegister(0x10, 0, AccessType.READ_ONLY);
+        FGPFRHI = newRegister(0x14, 0, AccessType.READ_ONLY);
+        FGPFRLO = newRegister(0x18, 0, AccessType.READ_ONLY);
     }
 
     @Override
     protected boolean onWrite(int ofs, int v) {
-
-        switch (ofs) {
-            case 0x00: FCR = v; return true;
-            case 0x04: FCMD = v; return true;
-            case 0x08: FSR = v; return true;
-
-            // read-only registers
-            case 0x0C:
-            case 0x10:
-            case 0x14:
-            case 0x18:
-                return false;
-        }
-
-        return false;
+        return super.onWrite(ofs, v);
     }
 
     @Override
     protected Integer onRead(int ofs) {
-
-        switch (ofs) {
-            case 0x00: return FCR;
-            case 0x04: return FCMD;
-            case 0x08: return FSR;
-
-            case 0x0C: return PR;
-            case 0x10: return VR;
-            case 0x14: return FGPFRHI;
-            case 0x18: return FGPFRLO;
-        }
-
-        return null;
+        return super.onRead(ofs);
     }
 }

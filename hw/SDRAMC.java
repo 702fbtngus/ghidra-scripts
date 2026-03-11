@@ -1,21 +1,20 @@
 package hw;
 
+import hw.MmioDevice.Register.AccessType;
+
 public class SDRAMC extends MmioDevice {
 
-    int MR;       // 0x00
-    int TR;       // 0x04
-    int CR;       // 0x08
-    int HSR;      // 0x0C
-    int LPR;      // 0x10
-
-    int IER;      // 0x14 (WO)
-    int IDR;      // 0x18 (WO)
-    int IMR;      // 0x1C (RO)
-    int ISR;      // 0x20 (RO)
-
-    int MDR;      // 0x24
-
-    int VERSION;  // 0xFC (RO)
+    Register MR;       // 0x00
+    Register TR;       // 0x04
+    Register CR;       // 0x08
+    Register HSR;      // 0x0C
+    Register LPR;      // 0x10
+    Register IER;      // 0x14 (WO)
+    Register IDR;      // 0x18 (WO)
+    Register IMR;      // 0x1C (RO)
+    Register ISR;      // 0x20 (RO)
+    Register MDR;      // 0x24
+    Register VERSION;  // 0xFC (RO)
 
     public SDRAMC(long baseAddr, String name, int group) {
 
@@ -27,73 +26,26 @@ public class SDRAMC extends MmioDevice {
     protected void link() {}
 
     protected void resetRegisters() {
-            MR = 0x00000000;
-            TR = 0x00000000;
-            CR = 0x852372C0;
-            HSR = 0x00000000;
-            LPR = 0x00000000;
-    
-            IER = 0;
-            IDR = 0;
-    
-            IMR = 0x00000000;
-            ISR = 0x00000000;
-    
-            MDR = 0x00000000;
-    
-            VERSION = 0;  // device-specific
-        }
+        MR = newRegister(0x00, 0x00000000, AccessType.READ_WRITE);
+        TR = newRegister(0x04, 0x00000000, AccessType.READ_WRITE);
+        CR = newRegister(0x08, 0x852372C0, AccessType.READ_WRITE);
+        HSR = newRegister(0x0C, 0x00000000, AccessType.READ_WRITE);
+        LPR = newRegister(0x10, 0x00000000, AccessType.READ_WRITE);
+        IER = newRegister(0x14, 0, AccessType.WRITE_ONLY);
+        IDR = newRegister(0x18, 0, AccessType.WRITE_ONLY);
+        IMR = newRegister(0x1C, 0x00000000, AccessType.READ_ONLY);
+        ISR = newRegister(0x20, 0x00000000, AccessType.READ_ONLY);
+        MDR = newRegister(0x24, 0x00000000, AccessType.READ_WRITE);
+        VERSION = newRegister(0xFC, 0, AccessType.READ_ONLY);
+    }
 
     @Override
     protected boolean onWrite(int ofs, int v) {
-
-        switch (ofs) {
-            case 0x00: MR = v; return true;
-            case 0x04: TR = v; return true;
-            case 0x08: CR = v; return true;
-            case 0x0C: HSR = v; return true;
-            case 0x10: LPR = v; return true;
-
-            case 0x14: IER = v; return true;   // WO
-            case 0x18: IDR = v; return true;   // WO
-
-            case 0x24: MDR = v; return true;
-
-            // read-only registers
-            case 0x1C:
-            case 0x20:
-            case 0xFC:
-                return false;
-        }
-
-        return false;
+        return super.onWrite(ofs, v);
     }
 
     @Override
     protected Integer onRead(int ofs) {
-
-        switch (ofs) {
-            case 0x00: return MR;
-            case 0x04: return TR;
-            case 0x08: return CR;
-            case 0x0C: return HSR;
-            case 0x10: return LPR;
-
-            case 0x1C: return IMR;  // RO
-            case 0x20: return ISR;  // RO
-
-            case 0x24: return MDR;
-
-            case 0xFC: return VERSION;  // RO
-        }
-
-        // write-only registers → no read
-        switch (ofs) {
-            case 0x14:
-            case 0x18:
-                return null;
-        }
-
-        return null;
+        return super.onRead(ofs);
     }
 }

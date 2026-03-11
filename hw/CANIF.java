@@ -1,8 +1,10 @@
 package hw;
 
+import hw.MmioDevice.Register.AccessType;
+
 public class CANIF extends MmioDevice {
 
-    int VERSION, PARAMETER;
+    Register VERSION, PARAMETER;
 
     CANIFChannel[] channels;
 
@@ -10,69 +12,25 @@ public class CANIF extends MmioDevice {
 
         super(baseAddr, name, group);
 
-        VERSION = 0x10200110;
-        PARAMETER = 0x00000010;
+        VERSION = newRegister(0x00, 0x10200110, AccessType.READ_ONLY);
+        PARAMETER = newRegister(0x04, 0x00000010, AccessType.READ_ONLY);
 
-        int chno = VERSION >> 20 & 0b111;
+        int chno = VERSION.value >> 20 & 0b111;
         int[] mnch = {
-            VERSION >> 24 & 0x3f,
-            PARAMETER & 0x3f,
-            PARAMETER >> 8 & 0x3f,
-            PARAMETER >> 16 & 0x3f,
-            PARAMETER >> 24 & 0x3f,
+            VERSION.value >> 24 & 0x3f,
+            PARAMETER.value & 0x3f,
+            PARAMETER.value >> 8 & 0x3f,
+            PARAMETER.value >> 16 & 0x3f,
+            PARAMETER.value >> 24 & 0x3f,
         };
 
         channels = new CANIFChannel[chno];
         for (int i = 0; i < chno; i++) {
-            channels[i] = new CANIFChannel(i, this, mnch[i]);
+            channels[i] = new CANIFChannel(i, i * 0x200, this, mnch[i]);
+            addRegion(channels[i]);
         }
     }
 
     @Override
     protected void link() {}
-
-    @Override
-    protected boolean onWrite(int ofs, int v) {
-
-        // Common registers
-        switch (ofs) {
-            case 0x00:
-            case 0x04:
-                return false;
-        }
-
-        // Channel area
-        if (ofs < 0xa00) {
-            int ch = ofs / 0x200;
-            int ro = ofs % 0x200;
-
-            if (ch < channels.length) {
-                return channels[ch].onWrite(ro, v);
-            }
-        }
-
-        return false;
-    }
-
-    @Override
-    protected Integer onRead(int ofs) {
-
-        // Common registers
-        switch (ofs) {
-            case 0x00: return VERSION;
-            case 0x04: return PARAMETER;
-        }
-
-        // Channel area
-        if (ofs < 0xa00) {
-            int ch = ofs / 0x200;
-            int ro = ofs % 0x200;
-
-            if (ch < channels.length) {
-                return channels[ch].onRead(ro);
-            }
-        }
-        
-        return null;
-    }
 }

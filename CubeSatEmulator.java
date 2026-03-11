@@ -880,6 +880,7 @@ public class CubeSatEmulator extends GhidraScript {
         }
         
             String funcname = getCurrentFunctionName();
+            println("P" + currentPhase + " #" + currentInstructionCount + ": PC = " + thread.getCounter() + " (" + funcname + ")", 1);
         // }
 
         // int numDelayedTasks = getRAMValue(state, getRAMValue(state, 0x13b4));

@@ -1,17 +1,18 @@
 package hw;
 
 import etc.Util;
+import hw.MmioDevice.Register.AccessType;
 
 public class INTC extends MmioDevice {
 
     // 64 Interrupt Priority Registers (RW)
-    private final int[] IPR = new int[64];
+    private final Register[] IPR = new Register[64];
 
     // 64 Interrupt Request Registers (RO)
-    private final int[] IRR = new int[64];
+    private final Register[] IRR = new Register[64];
 
     // 4 Interrupt Cause Registers (RO)
-    private final int[] ICR = new int[4];
+    private final Register[] ICR = new Register[4];
 
     public int highestPrio = -1;
 
@@ -30,9 +31,13 @@ public class INTC extends MmioDevice {
     private void resetRegisters() {
         // IPR reset = 0
         for (int i = 0; i < 64; i++)
-            IPR[i] = 0;
+            IPR[i] = newRegister(i * 4, 0, AccessType.READ_WRITE);
 
-        // IRR, ICR undefined at reset → leave as 0
+        for (int i = 0; i < 64; i++)
+            IRR[i] = newRegister(0x100 + i * 4, 0, AccessType.READ_ONLY);
+
+        for (int i = 0; i < 4; i++)
+            ICR[i] = newRegister(0x20C - i * 4, 0, AccessType.READ_ONLY);
     }
 
 
@@ -45,7 +50,7 @@ public class INTC extends MmioDevice {
         if (ofs < 0x100) {
             int index = ofs >>> 2;   // /4
             if (index < 64) {
-                IPR[index] = value;
+                IPR[index].value = value;
                 updateHighestPriority();
                 return true;
             }
@@ -84,7 +89,7 @@ public class INTC extends MmioDevice {
             int index = ofs >>> 2;
             Util.println("INTC IPR index = " + index);
             if (index < 64)
-                return IPR[index];
+                return IPR[index].value;
             return null;
         }
 
@@ -95,7 +100,7 @@ public class INTC extends MmioDevice {
             int index = (ofs - 0x100) >>> 2;
             Util.println("INTC IRR index = " + index);
             if (index < 64)
-                return IRR[index];
+                return IRR[index].value;
             return null;
         }
 
@@ -106,7 +111,7 @@ public class INTC extends MmioDevice {
             int index = (0x20c - ofs) >>> 2;
             Util.println("INTC ICR index = " + index);
             if (index < 4)
-                return ICR[index];
+                return ICR[index].value;
             return null;
         }
 
@@ -120,20 +125,20 @@ public class INTC extends MmioDevice {
     public void raiseInterrupt(int group, int line) {
         if (group < 0 || group >= 64) return;
 
-        IRR[group] |= 1 << line;
+        IRR[group].value |= 1 << line;
         updateHighestPriority();
     }
 
     public void clearInterrupt(int group, int line) {
         if (group < 0 || group >= 64) return;
 
-        IRR[group] &= ~(1 << line);
+        IRR[group].value &= ~(1 << line);
         updateHighestPriority();
     }
 
     public void setInterruptCause(int cpu, int cause) {
         if (cpu >= 0 && cpu < 4)
-            ICR[cpu] = cause;
+            ICR[cpu].value = cause;
     }
     
     // ------------------------------------------
@@ -144,17 +149,17 @@ public class INTC extends MmioDevice {
         int bestPrio = -1;
     
         for (int irq = 0; irq < 64; irq++) {
-            if (IRR[irq] == 0)
+            if (IRR[irq].value == 0)
                 continue;
     
-            int prio = IPR[irq] >>> 0x36;
+            int prio = IPR[irq].value >>> 0x36;
     
             if (prio > bestPrio ||
                (prio == bestPrio)) {
                 bestPrio = prio;
             }
             
-            ICR[prio] = irq;
+            ICR[prio].value = irq;
         }
     
         highestPrio = bestPrio;

@@ -53,7 +53,7 @@ public abstract class I2CDevice extends Device {
             Util.println(mdv.getClass().getSimpleName() + ": invalid rx");
             return null;
         }
-        Util.println("Received successfully:" + value, 2);
+        Util.println("Received successfully: " + value, 2);
         return value;
     }
 

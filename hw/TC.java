@@ -1,5 +1,6 @@
 package hw;
 
+import hw.MmioDevice.Register.AccessType;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -9,17 +10,29 @@ import etc.Util;
 public class TC extends MmioDevice {
 
     private static class Channel {
-        int CCR, CMR, CV, RA, RB, RC, SR, IER, IDR, IMR;
+        Register CCR, CMR, CV, RA, RB, RC, SR, IER, IDR, IMR;
         boolean clk;
         TC tc;
         int num;
 
-        Channel() {
-            CCR = CMR = CV = RA = RB = RC = SR = IER = IDR = IMR = 0;
+        Channel(TC tc, int num) {
+            this.tc = tc;
+            this.num = num;
+            int base = num * 0x40;
+            CCR = tc.newRegister(base + 0x00, 0, AccessType.WRITE_ONLY);
+            CMR = tc.newRegister(base + 0x04, 0, AccessType.READ_WRITE);
+            CV = tc.newRegister(base + 0x10, 0, AccessType.READ_ONLY);
+            RA = tc.newRegister(base + 0x14, 0, AccessType.READ_WRITE);
+            RB = tc.newRegister(base + 0x18, 0, AccessType.READ_WRITE);
+            RC = tc.newRegister(base + 0x1C, 0, AccessType.READ_WRITE);
+            SR = tc.newRegister(base + 0x20, 0, AccessType.READ_ONLY);
+            IER = tc.newRegister(base + 0x24, 0, AccessType.WRITE_ONLY);
+            IDR = tc.newRegister(base + 0x28, 0, AccessType.WRITE_ONLY);
+            IMR = tc.newRegister(base + 0x2C, 0, AccessType.READ_ONLY);
         }
 
         public void checkInterrupt() {
-            if ((SR & 0xff) == 0) {
+            if ((SR.value & 0xff) == 0) {
                 tc.intc.clearInterrupt(tc.group, num);
             } else {
                 tc.intc.raiseInterrupt(tc.group, num);
@@ -30,7 +43,7 @@ public class TC extends MmioDevice {
     Channel[] ch = new Channel[3];
 
     // Block registers
-    int BCR, BMR, FEATURES, VERSION;
+    Register BCR, BMR, FEATURES, VERSION;
 
     private INTC intc;
     private ScheduledExecutorService scheduler;
@@ -40,15 +53,13 @@ public class TC extends MmioDevice {
         super(baseAddr, name, group);
 
         for (int i = 0; i < 3; i++) {
-            ch[i] = new Channel();
-            ch[i].num = i;
-            ch[i].tc = this;
+            ch[i] = new Channel(this, i);
         }
 
-        BCR = 0;
-        BMR = 0;
-        FEATURES = 0;
-        VERSION = 0;
+        BCR = newRegister(0xC0, 0, AccessType.WRITE_ONLY);
+        BMR = newRegister(0xC4, 0, AccessType.READ_WRITE);
+        FEATURES = newRegister(0xF8, 0, AccessType.READ_ONLY);
+        VERSION = newRegister(0xFC, 0, AccessType.READ_ONLY);
     }
 
     public void startClockThread() {
@@ -68,19 +79,19 @@ public class TC extends MmioDevice {
     private void tick() {
         for (int i = 0; i < ch.length; i++) {
             Channel c = ch[i];
-            if ((c.SR >> 16 & 1) == 1) {
-                if (c.CV == 0xffff) {
-                    c.SR |= 1;
+            if ((c.SR.value >> 16 & 1) == 1) {
+                if (c.CV.value == 0xffff) {
+                    c.SR.value |= 1;
                     Util.println("[TC Channel " + i + "] overloaded");
                     c.checkInterrupt();
-                    c.CV = 0;
-                } else if (c.CV == c.RC - 1) {
-                    c.SR |= 1 << 4;
+                    c.CV.value = 0;
+                } else if (c.CV.value == c.RC.value - 1) {
+                    c.SR.value |= 1 << 4;
                     Util.println("[TC Channel " + i + "] RC Compare occurred");
                     c.checkInterrupt();
-                    c.CV = 0;
+                    c.CV.value = 0;
                 } else {
-                    c.CV += 1;
+                    c.CV.value += 1;
                 }
             }
         }
@@ -89,8 +100,8 @@ public class TC extends MmioDevice {
     public void manualTick() {
         for (int i = 0; i < ch.length; i++) {
             Channel c = ch[i];
-            if ((c.SR >> 16 & 1) == 1) {
-                c.SR |= 1 << 4;
+            if ((c.SR.value >> 16 & 1) == 1) {
+                c.SR.value |= 1 << 4;
                 Util.println("[TC Channel " + i + "] manual tick occurred");
                 c.checkInterrupt();
             }
@@ -113,26 +124,26 @@ public class TC extends MmioDevice {
             Channel c = ch[channel];
             switch (off) {
                 case 0x00:
-                    c.CCR = val;
+                    c.CCR.value = val;
                     int clken = val & 1;
                     int clkdis = (val & 2) >> 1;
                     if (clkdis == 1) {
                         c.clk = false;
-                        c.SR &= ~(1 << 16);
+                        c.SR.value &= ~(1 << 16);
                         c.checkInterrupt();
                     } else if (clken == 1) {
                         c.clk = true;
                         System.err.println("[TC Channel " + channel + "] enabled");
-                        c.SR |= 1 << 16;
+                        c.SR.value |= 1 << 16;
                         c.checkInterrupt();
                     }
                     return true;
-                case 0x04: c.CMR = val; return true;
-                case 0x14: c.RA  = val; return true;
-                case 0x18: c.RB  = val; return true;
-                case 0x1C: c.RC  = val; return true;
-                case 0x24: c.IER = val; return true;
-                case 0x28: c.IDR = val; return true;
+                case 0x04: c.CMR.value = val; return true;
+                case 0x14: c.RA.value  = val; return true;
+                case 0x18: c.RB.value  = val; return true;
+                case 0x1C: c.RC.value  = val; return true;
+                case 0x24: c.IER.value = val; return true;
+                case 0x28: c.IDR.value = val; return true;
 
                 // Read-only
                 case 0x10: // CV
@@ -144,8 +155,8 @@ public class TC extends MmioDevice {
 
         // ---------- Block-level registers ----------
         switch (ofs) {
-            case 0xC0: BCR = val; return true;
-            case 0xC4: BMR = val; return true;
+            case 0xC0: BCR.value = val; return true;
+            case 0xC4: BMR.value = val; return true;
 
             case 0xF8: // read-only
             case 0xFC: // read-only
@@ -166,28 +177,28 @@ public class TC extends MmioDevice {
             Channel c = ch[channel];
             switch (off) {
                 case 0x00: return null;        // CCR write-only
-                case 0x04: return c.CMR;
-                case 0x10: return ++c.CV;
-                case 0x14: return c.RA;
-                case 0x18: return c.RB;
-                case 0x1C: return c.RC;
+                case 0x04: return c.CMR.value;
+                case 0x10: return ++c.CV.value;
+                case 0x14: return c.RA.value;
+                case 0x18: return c.RB.value;
+                case 0x1C: return c.RC.value;
                 case 0x20:
-                    int sr = c.SR;
-                    c.SR &= ~0xff;
+                    int sr = c.SR.value;
+                    c.SR.value &= ~0xff;
                     c.checkInterrupt();
                     return sr;
                 case 0x24: return null;        // IER write-only
                 case 0x28: return null;        // IDR write-only
-                case 0x2C: return c.IMR;
+                case 0x2C: return c.IMR.value;
             }
         }
 
         // ---------- Block-level ----------
         switch (ofs) {
             case 0xC0: return null; // BCR write-only
-            case 0xC4: return BMR;
-            case 0xF8: return FEATURES;
-            case 0xFC: return VERSION;
+            case 0xC4: return BMR.value;
+            case 0xF8: return FEATURES.value;
+            case 0xFC: return VERSION.value;
         }
 
         return null;

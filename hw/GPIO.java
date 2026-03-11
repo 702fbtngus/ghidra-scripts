@@ -8,42 +8,15 @@ public class GPIO extends MmioDevice {
 
         super(baseAddr, name, group, 0x800l);   // 4 ports × 0x200
 
-        ports[0] = new GPIOPort(0);
-        ports[1] = new GPIOPort(1);
-        ports[2] = new GPIOPort(2);
-        ports[3] = new GPIOPort(3);
+        ports[0] = new GPIOPort(0, 0x000, this);
+        ports[1] = new GPIOPort(1, 0x200, this);
+        ports[2] = new GPIOPort(2, 0x400, this);
+        ports[3] = new GPIOPort(3, 0x600, this);
+        for (GPIOPort port : ports) {
+            addRegion(port);
+        }
     }
     
     @Override
     protected void link() {}
-
-    private GPIOPort decodePort(int offset) {
-        int p = offset >>> 9;   // each port = 0x200
-        if (p < 0 || p >= 4) return null;
-        return ports[p];
-    }
-
-    private int decodeLocalOffset(int offset) {
-        return offset & 0x1FF;
-    }
-
-    @Override
-    protected boolean onWrite(int offset, int value) {
-
-        GPIOPort port = decodePort(offset);
-        if (port == null) return false;
-
-        int ofs = decodeLocalOffset(offset);
-        return port.writeReg(ofs, value);
-    }
-
-    @Override
-    protected Integer onRead(int offset) {
-
-        GPIOPort port = decodePort(offset);
-        if (port == null) return null;
-
-        int ofs = decodeLocalOffset(offset);
-        return port.readReg(ofs);
-    }
 }

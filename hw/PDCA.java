@@ -1,77 +1,35 @@
 package hw;
 
 import etc.Util;
+import etc.Util.DataSize;
+import hw.MmioDevice.Register.AccessType;
 
 public class PDCA extends MmioDevice {
 
     public static final int NUM_CHANNELS = 16;
 
     PDCAChannel[] channels = new PDCAChannel[NUM_CHANNELS];
-    PDCAPerfMonitor mon = new PDCAPerfMonitor();
-    int VERSION;
+    PDCAPerfMonitor mon;
+    Register VERSION;
 
     public PDCA(long baseAddr, String name, int group) {
 
         super(baseAddr, name, group, 0x1000l);
 
         for (int i = 0; i < NUM_CHANNELS; i++) {
-            channels[i] = new PDCAChannel(i, this);
+            channels[i] = new PDCAChannel(i, i * 0x40, this);
+            addRegion(channels[i]);
         }
+        mon = new PDCAPerfMonitor(this);
+        addRegion(mon);
 
-        VERSION = 0;
+        VERSION = newRegister(0x834, 0, AccessType.READ_ONLY);
     }
     
     @Override
     protected void link() {}
 
-    @Override
-    protected boolean onWrite(int ofs, int val) {
-
-        // Channel area
-        if (ofs < 0x800) {
-            int ch = ofs / 0x40;
-            int ro = ofs % 0x40;
-
-            if (ch < NUM_CHANNELS) {
-                return channels[ch].onWrite(ro, val);
-            }
-            return false;
-        }
-
-        // Perf monitor area
-        if (ofs >= 0x800 && ofs <= 0x830) {
-            return mon.onWrite(ofs - 0x800, val);
-        }
-
-        // Version is read-only
-        if (ofs == 0x834) return false;
-
-        return false;
-    }
-
-    @Override
-    protected Integer onRead(int ofs) {
-
-        if (ofs < 0x800) {
-            int ch = ofs / 0x40;
-            int ro = ofs % 0x40;
-
-            if (ch < NUM_CHANNELS) {
-                return channels[ch].onRead(ro);
-            }
-            return null;
-        }
-
-        if (ofs >= 0x800 && ofs <= 0x830) {
-            return mon.onRead(ofs - 0x800);
-        }
-
-        if (ofs == 0x834) return VERSION;
-
-        return null;
-    }
-
-    public void transferData(int mar, int psr, int size) {
+    public void transferData(int mar, int psr, DataSize size) {
         
         Util.println("[PDCA transferData] MAR = " + Util.intToHex(mar) + ", PSR = " + Util.intToHex(psr), 2);
         boolean is_rx;
