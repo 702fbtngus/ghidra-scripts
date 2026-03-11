@@ -19,6 +19,7 @@ parser_del.add_argument("file")
 # emulation mode
 parser_emul = subparsers.add_parser("emul")
 parser_emul.add_argument("--fast", action="store_true")
+parser_emul.add_argument("--num-instr", type=int)
 
 # import mode
 parser_list = subparsers.add_parser("import")
@@ -62,7 +63,10 @@ elif args.mode == "del":
     execute_script("ProjectManager.java", ["delete", args.file])
 elif args.mode == "emul":
     file = "nanomind-bsp-fast.elf" if args.fast else "nanomind-bsp-new.elf"
-    execute_script("CubeSatEmulator.java", process=file, to_main=True)
+    emul_args = []
+    if args.num_instr is not None:
+        emul_args.append(f"--num-instr={args.num_instr}")
+    execute_script("CubeSatEmulator.java", emul_args, process=file, to_main=True)
 elif args.mode == "import":
     file = "/home/fbtngus/ghidra-randev/build/dist/" + args.file
     execute_script(_import=file)

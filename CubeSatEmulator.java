@@ -66,8 +66,8 @@ public class CubeSatEmulator extends GhidraScript {
 
     public SystemRegister system_register;
     public String currentFunctionName = "";
-    public int currentInstructionCount = 0;
-    public int currentPhase = 0;    
+    public PhaseManager phaseManager = new PhaseManager();
+    public int instructionLimit = -1;
     public PrintWriter[] pw;
     public Map<String, PrintWriter> taskpw = new HashMap<>();
     public PcodeThread<byte[]> currentThread = null;
@@ -88,20 +88,28 @@ public class CubeSatEmulator extends GhidraScript {
     public boolean userMode = false;
     
     public LogBuffer log_buffer;
+    public int temp = 0;
     
     public static java.util.function.Function<String, Void> println;
 
+    public PhaseManager.Phase getPhase() {
+        phaseManager.setFunctionName(getCurrentFunctionName());
+        return phaseManager.getCurrentPhase();
+    }
+
     public boolean isDetail(Address addr) {
+        PhaseManager.Phase phase = getPhase();
         return (
-            (currentInstructionCount > DETAIL_FROM
-            && currentInstructionCount < DETAIL_UNTIL)
+            (phase.getPhaseInstructionCount() > DETAIL_FROM
+            && phase.getPhaseInstructionCount() < DETAIL_UNTIL)
         );
     }
 
     public boolean printerMask(int i) {
+        PhaseManager.Phase phase = getPhase();
         return (
             // true
-            ((currentPhase != 25)
+            ((phase.getPhaseNumber() != 25)
             || i == 6 || i == 7)
             //     (currentPhase == 27)
             //     || (currentThread != null && currentThread.getCounter() != null && (currentThread.getCounter().getOffset() == 0x8002f97al || currentThread.getCounter().getOffset() == 0x8002c634l))
@@ -114,12 +122,33 @@ public class CubeSatEmulator extends GhidraScript {
     }
 
     public boolean exitCondition() {
+        PhaseManager.Phase phase = getPhase();
         return (
             // (currentPhase == 28)
             false
-            || (currentPhase == 28 && currentInstructionCount > 2000000)
+            || (instructionLimit >= 0 && phaseManager.getTotalInstructionCount() >= instructionLimit)
+            || (phase.getPhaseNumber() == 28 && phase.getPhaseInstructionCount() > 2000000)
             // || (currentPhase == 1)
         );
+    }
+
+    public void parseScriptArgs() {
+        for (String arg : getScriptArgs()) {
+            if (!arg.startsWith("--num-instr=")) {
+                continue;
+            }
+
+            String value = arg.substring("--num-instr=".length());
+            try {
+                instructionLimit = Integer.parseInt(value);
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("Invalid --num-instr value: " + value, e);
+            }
+
+            if (instructionLimit < 0) {
+                throw new IllegalArgumentException("--num-instr must be non-negative");
+            }
+        }
     }
         
     public String getCurrentFunctionName() {
@@ -172,8 +201,7 @@ public class CubeSatEmulator extends GhidraScript {
     }
 
     public void println(String s, int i) {
-        String funcname = getCurrentFunctionName();
-        String s1 = s + " (P" + currentPhase + " #" + currentInstructionCount + ", " + funcname + ")";
+        String s1 = s + " (" + getPhase() + ")";
         if (i == 7) {
             print_inner(s, i);
         } else if (i != 0) {
@@ -380,6 +408,7 @@ public class CubeSatEmulator extends GhidraScript {
 
             int sp = getRegisterValue(state, "SP");
             userMode = TaskManager.getUserAddr(currentTaskName) == sp;
+            // println(String.format("useraddr of %s: %s, sp: %s", currentTaskName, TaskManager.getUserAddr(currentTaskName), sp), 6);
             int sr = getRegisterValue(state, "SR");
             setRegisterValue(state, "SR", loadFromAddr(state, sp));
             sp += 4;
@@ -457,6 +486,7 @@ public class CubeSatEmulator extends GhidraScript {
                 break;
                 case 0b001:
                     int userAddr = TaskManager.getUserAddr(currentTaskName);
+                    // println(String.format("useraddr of %s: %s, sp: %s", currentTaskName, TaskManager.getUserAddr(currentTaskName), sp), 6);
                     userMode = userAddr == sp || userAddr + 0x18 == sp;
                     setRegisterValue(state, "SR", loadFromAddr(state, sp));
                     sp += 4;
@@ -595,7 +625,7 @@ public class CubeSatEmulator extends GhidraScript {
         return of1 == of2;
     }
 
-    public void adjustInstructionCount(Instruction instr, Address addr) {
+    public void adjustPhaseInstructionCount(Instruction instr, Address addr) {
         if (
             (
                 instr.getMnemonicString().endsWith("SRF")
@@ -606,7 +636,7 @@ public class CubeSatEmulator extends GhidraScript {
             ) || interrupted
         ) {
             // println("adjusted", 1);
-            currentInstructionCount--;
+            phaseManager.decrementPhaseInstructionCount();
         }
     }
 
@@ -879,8 +909,7 @@ public class CubeSatEmulator extends GhidraScript {
             TaskManager.createTask(taskName, newTCB, prio, pxStack + 0x24);
         }
         
-            String funcname = getCurrentFunctionName();
-            println("P" + currentPhase + " #" + currentInstructionCount + ": PC = " + thread.getCounter() + " (" + funcname + ")", 1);
+            println("PC = " + thread.getCounter(), 1);
         // }
 
         // int numDelayedTasks = getRAMValue(state, getRAMValue(state, 0x13b4));
@@ -942,13 +971,23 @@ public class CubeSatEmulator extends GhidraScript {
         //     println("[gs_thread_exit] " + taskName, 6);
         // }
 
-        adjustInstructionCount(instr, addr);
+        adjustPhaseInstructionCount(instr, addr);
 
         if (addr.getOffset() == 0x8003bb88l) {
             // Entered _vfprintf_r
             Util.println("_vfprintf_r called");
             thread.setCounter(toAddr(getRegisterValue(state, "LR")));
             currentFrame.finishAsBranch();
+        }
+
+        if (addr.getOffset() == 0x80029ab0l) {
+            // Entered gs_i2c_master_transaction
+            Util.println("gs_i2c_master_transaction called", 2);
+            int tx = getRegisterValue(state, "R10");
+            int txlen = getRegisterValue(state, "R9");
+            Util.println(String.format("tx: 0x%x", tx), 2);
+            Util.println(String.format("*tx: 0x%x", getRAMValue(state, tx)), 2);
+            Util.println(String.format("txlen: %d", txlen), 2);
         }
 
         if (isInterestingInstr(instr, addr)) {
@@ -1074,6 +1113,7 @@ public class CubeSatEmulator extends GhidraScript {
 
     @Override
     protected void run() throws Exception {
+        parseScriptArgs();
 
         pw = new PrintWriter[PW_FILENAMES.length];
         for (int i = 1; i < PW_FILENAMES.length; i++) {
@@ -1098,7 +1138,7 @@ public class CubeSatEmulator extends GhidraScript {
         };
         TaskManager.getCurrentTick = getCurrentTick;
         java.util.function.Supplier<String> getCurrentInstr = () -> {
-            return String.format("P%s #%s", currentPhase, currentInstructionCount);
+            return getPhase().toShortString();
         };
         TaskManager.getCurrentInstr = getCurrentInstr;
 
@@ -1160,53 +1200,27 @@ public class CubeSatEmulator extends GhidraScript {
         Util.currentThread = thread;
         Address entry = toAddr(0x80000000);
         thread.overrideCounter(entry);
+        phaseManager.startPhase(getCurrentFunctionName());
 
         Util.setVar("register", 0x0l, 0x610000);
 
         while (true) {
-            if (thread.getCounter().getOffset() == 0x8001db06l
-             || thread.getCounter().getOffset() == 0x8001db0al
-             || thread.getCounter().getOffset() == 0x8001db0el
-             || thread.getCounter().getOffset() == 0x8001db12l
-             || thread.getCounter().getOffset() == 0x8001db16l
-             || thread.getCounter().getOffset() == 0x8001db1al
-             || thread.getCounter().getOffset() == 0x8001db1el
-             || thread.getCounter().getOffset() == 0x8001db22l
-             || thread.getCounter().getOffset() == 0x8001db26l
-             || thread.getCounter().getOffset() == 0x8001db2al
-             || thread.getCounter().getOffset() == 0x8001db2el
-             || thread.getCounter().getOffset() == 0x8001db32l
-             || thread.getCounter().getOffset() == 0x8001db36l
-             || thread.getCounter().getOffset() == 0x8001db3al
-             || thread.getCounter().getOffset() == 0x8001db3el
-             || thread.getCounter().getOffset() == 0x8001db42l
-             || thread.getCounter().getOffset() == 0x8001db46l
-             || thread.getCounter().getOffset() == 0x8001db4al
-             || thread.getCounter().getOffset() == 0x8001db4el
-             || thread.getCounter().getOffset() == 0x8001db52l
-             || thread.getCounter().getOffset() == 0x8001db56l
-             || thread.getCounter().getOffset() == 0x8001db5al
-             || thread.getCounter().getOffset() == 0x8001db5el
-             || thread.getCounter().getOffset() == 0x8001db62l
-             || thread.getCounter().getOffset() == 0x8001db66l
-             || thread.getCounter().getOffset() == 0x8001dc64l
-             || thread.getCounter().getOffset() == 0x8001dc68l
-             || thread.getCounter().getOffset() == 0x8001dc6cl
-            ) {
-                currentPhase++;
-                currentInstructionCount = 0;
-            }
-            String funcname = getCurrentFunctionName();
-            if (currentInstructionCount % 10000 == 0) {
-                // System.err.println("P" + currentPhase + " #" + currentInstructionCount + ": PC = " + thread.getCounter());
-                System.err.println(String.format("P%s #%s: PC = %s (%s %s)", currentPhase, currentInstructionCount, thread.getCounter(), interrupted, currentTaskName));
+            phaseManager.updatePhase(thread.getCounter().getOffset(), getCurrentFunctionName());
+            PhaseManager.Phase phase = getPhase();
+            if (phase.getPhaseInstructionCount() % 10000 == 0) {
+                System.err.println(String.format("%s: PC = %s (%s %s)", phase, thread.getCounter(), interrupted, currentTaskName));
             }
             int sp = getRegisterValue(currentThread.getState(), "SP");
-            Util.println("sp: " + Util.intToHex(sp));
+            Util.println("sp: " + Util.intToHex(sp), 1);
+            int n = getRAMValue(thread.getState(), 0x9d88);
+            if (temp != n) {
+                Util.println(String.format("*0x9D88: %x", n), 1);
+                temp = n;
+            }
             if (executeInstr(thread) == -1) {
                 return;
             }
-            currentInstructionCount++;
+            phaseManager.incrementPhaseInstructionCount();
             handleInterrupt();
             if (exitCondition()) {
                 tc0.exitClockThread();
