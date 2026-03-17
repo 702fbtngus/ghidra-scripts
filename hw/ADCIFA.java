@@ -1,5 +1,6 @@
 package hw;
 
+import helper.DeviceManager;
 import hw.MmioDevice.Register.AccessType;
 
 public class ADCIFA extends MmioDevice {
@@ -17,8 +18,8 @@ public class ADCIFA extends MmioDevice {
     Register IER, IDR, IMR;
     Register VERSION, PARAMETER, RES, RESERVED_A0;
 
-    public ADCIFA(long baseAddr, String name, int group) {
-        super(baseAddr, name, group);
+    public ADCIFA(DeviceManager deviceManager, long baseAddr, String name, int group) {
+        super(deviceManager, baseAddr, name, group);
 
         // Reset values are device-specific but shown as 0 in datasheet
         CR = newRegister(0x0000, 0, AccessType.WRITE_ONLY);
@@ -56,5 +57,5 @@ public class ADCIFA extends MmioDevice {
     }
 
     @Override
-    protected void link() {}
+    public void link() {}
 }

@@ -1,6 +1,6 @@
 package hw;
 
-import etc.Util;
+import helper.DeviceManager;
 
 public abstract class I2CDevice extends Device {
 
@@ -11,58 +11,17 @@ public abstract class I2CDevice extends Device {
     public byte[] response;
     public int respIndex;
 
-    public I2CDevice(String name, int addr) {
-        super(name);
+    public I2CDevice(DeviceManager deviceManager, String name, int addr) {
+        super(deviceManager, name);
         this.addr = addr;
-
-        // 🔥 생성되면 자동으로 registry에 등록
-        Device.registry.add(this);
-    }
-
-    public static final I2CDevice findI2CDevice(int addr) {
-        for (Device dv : Device.registry) {
-            if (dv instanceof I2CDevice idv) {
-                if (!(idv.addr == addr)) continue;
-                Util.println("findI2CDevice " + Util.intToHex(addr) + ": " + idv.name);
-                return idv;
-            }
-        }
-        Util.println("findI2CDevice " + Util.intToHex(addr) + ": null");
-        return null;
-    }
-
-    public static final Integer sendToI2CDevice(int addr, byte value) {
-        I2CDevice mdv = findI2CDevice(addr);
-        if (mdv == null) return null;
-        Util.println("Send to I2CDevice " + mdv.name + " @ " + Util.intToHex(addr) + ": " + value, 2);
-        if (!mdv.tx(value)) {
-            Util.println(mdv.getClass().getSimpleName() +
-            ": invalid tx value =0x" + Integer.toHexString(value));
-            return null;
-        }
-        Util.println("Sent successfully", 2);
-        return 0;
-    }
-
-    public static final Byte recvFromI2CDevice(int addr) {
-        I2CDevice mdv = findI2CDevice(addr);
-        if (mdv == null) return null;
-        Util.println("Recv from I2CDevice " + mdv.name + " @ " + Util.intToHex(addr), 2);
-        Byte value = mdv.rx();
-        if (value == null) {
-            Util.println(mdv.getClass().getSimpleName() + ": invalid rx");
-            return null;
-        }
-        Util.println("Received successfully: " + value, 2);
-        return value;
     }
 
     // ------------------------------
     // Subclass responsibility
     // ------------------------------
-    protected abstract boolean tx(byte value);
+    public abstract boolean tx(byte value);
 
-    protected Byte rx() {
+    public Byte rx() {
         return response[respIndex++];
     };
 }

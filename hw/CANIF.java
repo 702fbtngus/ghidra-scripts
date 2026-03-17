@@ -1,5 +1,6 @@
 package hw;
 
+import helper.DeviceManager;
 import hw.MmioDevice.Register.AccessType;
 
 public class CANIF extends MmioDevice {
@@ -8,9 +9,8 @@ public class CANIF extends MmioDevice {
 
     CANIFChannel[] channels;
 
-    public CANIF(long baseAddr, String name, int group) {
-
-        super(baseAddr, name, group);
+    public CANIF(DeviceManager deviceManager, long baseAddr, String name, int group) {
+        super(deviceManager, baseAddr, name, group);
 
         VERSION = newRegister(0x00, 0x10200110, AccessType.READ_ONLY);
         PARAMETER = newRegister(0x04, 0x00000010, AccessType.READ_ONLY);
@@ -32,5 +32,5 @@ public class CANIF extends MmioDevice {
     }
 
     @Override
-    protected void link() {}
+    public void link() {}
 }

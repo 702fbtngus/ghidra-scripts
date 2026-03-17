@@ -1,6 +1,5 @@
-#!/usr/bin/env python3
+#!/bin/python3
 
-import sys
 import subprocess
 import argparse
 
@@ -46,16 +45,14 @@ def execute_script(script=None, args=[], process=None, _import=None, to_main=Fal
             "-scriptPath", "/home/fbtngus/ghidra-scripts",
             "-postScript", script, *args,
         ]
+        if to_main:
+            runargs.append("--to-main")
     if process:
         runargs += ["-process", process, "-noanalysis"]
     if _import:
         runargs += ["-import", _import]
 
-    if to_main:
-        with open("./log/main.log", "w") as f:
-            subprocess.run(runargs, stdout=f)
-    else:
-        subprocess.run(runargs)
+    subprocess.run(runargs)
 
 if args.mode == "list":
     execute_script("ProjectManager.java", ["list"])
@@ -67,6 +64,7 @@ elif args.mode == "emul":
     if args.num_instr is not None:
         emul_args.append(f"--num-instr={args.num_instr}")
     execute_script("CubeSatEmulator.java", emul_args, process=file, to_main=True)
+    # execute_script("CubeSatEmulator.java", emul_args, process=file)
 elif args.mode == "import":
     file = "/home/fbtngus/ghidra-randev/build/dist/" + args.file
     execute_script(_import=file)

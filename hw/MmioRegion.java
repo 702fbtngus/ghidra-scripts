@@ -34,22 +34,24 @@ public abstract class MmioRegion {
         int regionEnd = region.baseOffset + region.size;
 
         if (regionStart < parentStart || regionEnd > parentEnd || regionStart >= regionEnd) {
-            throw new IllegalArgumentException(
-                getClass().getSimpleName() + ": region out of bounds offset=0x"
-                + Integer.toHexString(region.baseOffset) + " size=0x"
-                + Integer.toHexString(region.size)
-            );
+            throw new IllegalArgumentException(String.format(
+                "%s: region out of bounds offset=0x%X size=0x%X",
+                getClass().getSimpleName(),
+                region.baseOffset,
+                region.size
+            ));
         }
 
         for (MmioRegion existing : regions) {
             int existingStart = existing.baseOffset;
             int existingEnd = existing.baseOffset + existing.size;
             if (regionStart < existingEnd && existingStart < regionEnd) {
-                throw new IllegalArgumentException(
-                    getClass().getSimpleName() + ": overlapping regions at 0x"
-                    + Integer.toHexString(region.baseOffset) + " and 0x"
-                    + Integer.toHexString(existing.baseOffset)
-                );
+                throw new IllegalArgumentException(String.format(
+                    "%s: overlapping regions at 0x%X and 0x%X",
+                    getClass().getSimpleName(),
+                    region.baseOffset,
+                    existing.baseOffset
+                ));
             }
         }
 

@@ -1,5 +1,6 @@
 package hw;
 
+import helper.DeviceManager;
 import hw.MmioDevice.Register.AccessType;
 
 public class SPI extends MmioDevice {
@@ -11,8 +12,8 @@ public class SPI extends MmioDevice {
     Register WPCR, WPSR;
     Register FEATURES, VERSION;
 
-    public SPI(long baseAddr, String name, int group) {
-        super(baseAddr, name, group);   // Nanomind A3200 SPI base address (확인했으면 수정 가능)
+    public SPI(DeviceManager deviceManager, long baseAddr, String name, int group) {
+        super(deviceManager, baseAddr, name, group);   // Nanomind A3200 SPI base address (확인했으면 수정 가능)
 
         // Reset values (datasheet says all zeros unless device-specific)
         CR = newRegister(0x00, 0, AccessType.WRITE_ONLY);
@@ -34,7 +35,7 @@ public class SPI extends MmioDevice {
     }
     
     @Override
-    protected void link() {}
+    public void link() {}
 
     @Override
     protected boolean onWrite(int ofs, int val) {

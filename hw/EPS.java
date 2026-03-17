@@ -1,16 +1,18 @@
 package hw;
 
+import helper.DeviceManager;
+
 public class EPS extends I2CDevice {
 
-    public EPS(String name, int addr) {
-        super(name, addr);
+    public EPS(DeviceManager deviceManager, String name, int addr) {
+        super(deviceManager, name, addr);
     }
     
     @Override
-    protected void link() {}
+    public void link() {}
 
     @Override
-    protected boolean tx(byte b) {
+    public boolean tx(byte b) {
         return true;
     }
 }

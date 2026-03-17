@@ -1,5 +1,6 @@
 package hw;
 
+import helper.DeviceManager;
 import hw.MmioDevice.Register.AccessType;
 
 public class SDRAMC extends MmioDevice {
@@ -16,14 +17,13 @@ public class SDRAMC extends MmioDevice {
     Register MDR;      // 0x24
     Register VERSION;  // 0xFC (RO)
 
-    public SDRAMC(long baseAddr, String name, int group) {
-
-        super(baseAddr, name, group);
+    public SDRAMC(DeviceManager deviceManager, long baseAddr, String name, int group) {
+        super(deviceManager, baseAddr, name, group);
         resetRegisters();
     }
     
     @Override
-    protected void link() {}
+    public void link() {}
 
     protected void resetRegisters() {
         MR = newRegister(0x00, 0x00000000, AccessType.READ_WRITE);

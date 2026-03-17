@@ -1,5 +1,6 @@
 package hw;
 
+import helper.DeviceManager;
 import hw.MmioDevice.Register.AccessType;
 
 public class PM extends MmioDevice {
@@ -36,14 +37,13 @@ public class PM extends MmioDevice {
     Register CONFIG;        // 0x03F8 RO
     Register VERSION;       // 0x03FC RO
 
-    public PM(long baseAddr, String name, int group) {
-
-        super(baseAddr, name, group);
+    public PM(DeviceManager deviceManager, long baseAddr, String name, int group) {
+        super(deviceManager, baseAddr, name, group);
         resetRegisters();
     }
     
     @Override
-    protected void link() {}
+    public void link() {}
 
     // -------------------------
     // Reset Values from Table 7-5

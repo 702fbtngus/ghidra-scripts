@@ -1,5 +1,6 @@
 package hw;
 
+import helper.DeviceManager;
 import hw.MmioDevice.Register.AccessType;
 
 public class SCIF extends MmioDevice {
@@ -41,14 +42,13 @@ public class SCIF extends MmioDevice {
     Register RCCVERSION, RCCR8VERSION, OSC32VERSION, RC120VERSION;
     Register GPLPVERSION, GCLKVERSION, VERSION;
 
-    public SCIF(long baseAddr, String name, int group) {
-
-        super(baseAddr, name, group);
+    public SCIF(DeviceManager deviceManager, long baseAddr, String name, int group) {
+        super(deviceManager, baseAddr, name, group);
         resetRegisters();
     }
     
     @Override
-    protected void link() {}
+    public void link() {}
 
     private void resetRegisters() {
 

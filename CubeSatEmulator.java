@@ -6,43 +6,19 @@
 //@toolbar 
 //@runtime Java
 
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.PrintWriter;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.function.BiFunction;
 
 import ghidra.app.emulator.AdaptedEmulator;
 import ghidra.app.emulator.EmulatorConfiguration;
 import ghidra.app.emulator.EmulatorHelper;
 import ghidra.app.script.GhidraScript;
 import ghidra.pcode.emu.PcodeEmulator;
-import ghidra.pcode.emu.PcodeThread;
-import ghidra.pcode.exec.AnnotatedPcodeUseropLibrary;
-import ghidra.pcode.exec.PcodeExecutorState;
-import ghidra.pcode.exec.PcodeExecutorStatePiece.Reason;
-import ghidra.pcode.exec.PcodeFrame;
-import ghidra.program.model.address.Address;
-import ghidra.program.model.block.BasicBlockModel;
-import ghidra.program.model.block.CodeBlock;
-import ghidra.program.model.lang.Register;
-import ghidra.program.model.listing.Function;
-import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.Program;
-import ghidra.program.model.pcode.PcodeOp;
-import etc.LogBuffer;
-import etc.TaskManager;
-import etc.Util;
 import ghidra.pcode.emu.AbstractPcodeMachine;
-import ghidra.program.model.address.AddressFormatException;
-import ghidra.program.model.pcode.Varnode;
-import ghidra.util.exception.CancelledException;
 import hw.*;
+import helper.*;
+import helper.PhaseManager.Phase;
 
 public class CubeSatEmulator extends GhidraScript {
 
@@ -64,497 +40,119 @@ public class CubeSatEmulator extends GhidraScript {
         "temp.log",
     };
 
-    public SystemRegister system_register;
-    public String currentFunctionName = "";
-    public PhaseManager phaseManager = new PhaseManager();
-    public int instructionLimit = -1;
-    public PrintWriter[] pw;
-    public Map<String, PrintWriter> taskpw = new HashMap<>();
-    public PcodeThread<byte[]> currentThread = null;
-    public PcodeFrame currentFrame = null;
-    public INTC intc;
-    public TC tc0;
-    public TC tc1;
-
-    public String currentTaskName = "";
-    public int currentNumDelayedTasks = 0;
-    public int currentNumSuspendedTasks = 0;
-    public int currentSchedulerSuspended = 0;
-    public int[] currentNumReadyTasks = new int[5];
-    public int[] currentPxIndex = new int[5];
-    public int currentTopReadyPriority = 0;
-
-    public boolean interrupted = false;
-    public boolean userMode = false;
-    
-    public LogBuffer log_buffer;
-    public int temp = 0;
-    
-    public static java.util.function.Function<String, Void> println;
-
-    public PhaseManager.Phase getPhase() {
-        phaseManager.setFunctionName(getCurrentFunctionName());
-        return phaseManager.getCurrentPhase();
-    }
-
-    public boolean isDetail(Address addr) {
-        PhaseManager.Phase phase = getPhase();
-        return (
-            (phase.getPhaseInstructionCount() > DETAIL_FROM
-            && phase.getPhaseInstructionCount() < DETAIL_UNTIL)
-        );
-    }
-
-    public boolean printerMask(int i) {
-        PhaseManager.Phase phase = getPhase();
-        return (
-            // true
-            ((phase.getPhaseNumber() != 25)
-            || i == 6 || i == 7)
-            //     (currentPhase == 27)
-            //     || (currentThread != null && currentThread.getCounter() != null && (currentThread.getCounter().getOffset() == 0x8002f97al || currentThread.getCounter().getOffset() == 0x8002c634l))
-            //     // || i == 2 || i == 1 || i == 0
-            // )
-            // || (currentPhase == 0 && i == 2)
-            // || (currentPhase == 1 && (currentInstructionCount > 500000 || currentInstructionCount < 10000))
-            // || (currentInstructionCount > 900000)
-        );
-    }
-
+    // Helpers and managers
+    public final ProgramUtil programUtil = new ProgramUtil(this);
+    public final Context context = new Context();
+    public final CPUState cpuState = new CPUState(programUtil, context, (s, i) -> println(s, i));
+    public final PhaseManager phaseManager = new PhaseManager();
+    public final TaskManager taskManager = new TaskManager(context, cpuState);
+    public final InterruptManager interruptManager = new InterruptManager(context, cpuState, taskManager);
+    public ExecuteManager executeManager;
+    public Logger logger;
+    public LogHelper logHelper;
     public boolean exitCondition() {
-        PhaseManager.Phase phase = getPhase();
+        Phase phase = phaseManager.getCurrentPhase();
         return (
             // (currentPhase == 28)
             false
-            || (instructionLimit >= 0 && phaseManager.getTotalInstructionCount() >= instructionLimit)
+            || (context.instructionLimit >= 0 && phaseManager.getTotalInstructionCount() >= context.instructionLimit)
             || (phase.getPhaseNumber() == 28 && phase.getPhaseInstructionCount() > 2000000)
             // || (currentPhase == 1)
         );
     }
+    public final DeviceManager deviceManager = new DeviceManager(cpuState);
+
+    // Devices
+    public TC tc0;
+    public TC tc1;
 
     public void parseScriptArgs() {
         for (String arg : getScriptArgs()) {
-            if (!arg.startsWith("--num-instr=")) {
+            if (arg.equals("--to-main")) {
+                context.toMain = true;
                 continue;
             }
 
-            String value = arg.substring("--num-instr=".length());
-            try {
-                instructionLimit = Integer.parseInt(value);
-            } catch (NumberFormatException e) {
-                throw new IllegalArgumentException("Invalid --num-instr value: " + value, e);
-            }
-
-            if (instructionLimit < 0) {
-                throw new IllegalArgumentException("--num-instr must be non-negative");
-            }
-        }
-    }
-        
-    public String getCurrentFunctionName() {
-        if (currentThread == null) return "null";
-        
-        Address counter = currentThread.getCounter();
-        if (counter == null) return "null";
-
-        Function func = currentProgram.getFunctionManager().getFunctionContaining(counter);
-        if (func == null) return "null";
-
-        return func.getName();
-    }
-
-    public void print_task(String s) {
-        String taskName = currentTaskName;
-
-        if (interrupted || (!userMode) || currentTaskName == "") {
-            // taskName = "kernel";
-            return;
-        }
-
-        if (!taskpw.containsKey(taskName)) {
-            String filename = String.format("%s/tasklog/%s.log", getSourceFile().getParentFile().getAbsolutePath(), taskName);
-            File outFile = new File(filename);
-            try {
-                outFile.createNewFile();
-                taskpw.put(taskName, new PrintWriter(new FileWriter(outFile)));
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-
-        taskpw.get(taskName).println(s);
-    }
-
-    public void print_inner(String s, int i) {
-        if (printerMask(i)) {
-            if (i > 0 && pw.length > i) {
-                pw[i].println(s);
-                if (i == 1) {
-                    print_task(s);
+            if (arg.startsWith("--num-instr=")) {
+                String value = arg.substring("--num-instr=".length());
+                try {
+                    context.instructionLimit = Integer.parseInt(value);
+                } catch (NumberFormatException e) {
+                    throw new IllegalArgumentException("Invalid --num-instr value: " + value, e);
                 }
-            } else if (i == -1) {
-                pw[pw.length - 1].println(s);
-            } else if (i == 0) {
-                log_buffer.println(s);
+
+                if (context.instructionLimit < 0) {
+                    throw new IllegalArgumentException("--num-instr must be non-negative");
+                }
+
+                continue;
             }
         }
+    }
+
+    public void initializeHelpers() throws Exception {
+
+        // Initialize LogHelper and Logger
+        logHelper = new LogHelper(
+            cpuState,
+            phaseManager,
+            programUtil,
+            () -> INTERESTING_ADDR,
+            () -> DETAIL_FROM,
+            () -> DETAIL_UNTIL
+        );
+
+        logger = new Logger(
+            getSourceFile().getParentFile().getAbsolutePath(),
+            PW_FILENAMES,
+            logHelper::printerMask,
+            () -> phaseManager.getCurrentPhase().toString(),
+            () -> context.currentTaskName,
+            deviceManager::getCurrentDeviceName,
+            () -> context.interrupted,
+            () -> context.userMode,
+            () -> context.toMain,
+            1000000
+        );
+        logger.initialize();
+        Logger.setActiveLogger(logger);
+        logHelper.setLogger(logger);
+
+        // Initialize taskManager
+        java.util.function.Supplier<Integer> getCurrentTick = () -> {
+            return cpuState.getRAMValue(0x13a0);
+        };
+        taskManager.getCurrentTick = getCurrentTick;
+        java.util.function.Supplier<String> getCurrentInstr = () -> {
+            return phaseManager.getCurrentPhase().toShortString();
+        };
+        taskManager.getCurrentInstr = getCurrentInstr;
+        taskManager.logger = logger;
+
+        // Initialize DeviceManager
+        deviceManager.initializeDevices();
+        deviceManager.linkAllDevices();
+        
+        // Initialize InterruptManager
+        interruptManager.intc = (INTC) deviceManager.findDevice("INTC");;
+
+        // Initialize Context
+        context.currentProgram = currentProgram;
+        context.monitor = monitor;
+        context.rfModuleSimulator = new RFModuleSimulator(deviceManager);
+
+        // Initialize ExecuteManager
+        executeManager = new ExecuteManager(deviceManager, context, cpuState,
+            logHelper, taskManager, logger, phaseManager, programUtil);
     }
 
     public void println(String s, int i) {
-        String s1 = s + " (" + getPhase() + ")";
-        if (i == 7) {
-            print_inner(s, i);
-        } else if (i != 0) {
-            print_inner(s1, i);
-        }
-        print_inner(s, 0);
+        logger.println(s, i);
     }
 
     @Override
     public void println(String s) {
         println(s, 0);
-    }
-
-
-    public enum RegisterName {
-        SR   (0x0000l, 4),
-        EVBA (0x0004l, 4),
-        R0   (0x1000l, 4),
-        C    (0x1100l, 1),
-        Z    (0x1101l, 1),
-        N    (0x1102l, 1),
-        V    (0x1103l, 1),
-        R1   (0x1004l, 4),
-        R2   (0x1008l, 4),
-        R3   (0x100cl, 4),
-        R4   (0x1010l, 4),
-        R5   (0x1014l, 4),
-        R6   (0x1018l, 4),
-        R7   (0x101cl, 4),
-        R8   (0x1020l, 4),
-        R9   (0x1024l, 4),
-        R10  (0x1028l, 4),
-        R11  (0x102cl, 4),
-        R12  (0x1030l, 4),
-        SP   (0x1034l, 4),
-        LR   (0x1038l, 4),
-        PC   (0x103cl, 4);
-    
-        private final long memoryAddress;
-        private final int numBytes;
-    
-        RegisterName (long memoryAddress, int numBytes) {
-            this.memoryAddress = memoryAddress;
-            this.numBytes = numBytes;
-        }
-    
-        public long memoryAddress() {
-            return memoryAddress;
-        }
-    
-        public int numBytes() {
-            return numBytes;
-        }
-    
-        public static RegisterName fromMnemonic(String mnemonic) {
-            return RegisterName.valueOf(mnemonic);
-        }
-    }
-
-    public int loadFromAddr(PcodeExecutorState<byte[]> state, int addr) {
-        int result = Util.getVar(addr);
-        println(String.format("[loadFromAddr] *0x%08X = %d (0x%08X)", addr, result, result), 5);
-        return result;
-    }
-
-
-    public void storeToAddr(PcodeExecutorState<byte[]> state, int addr, int value) {
-        println(String.format("[storeToAddr] *0x%08X <- %d (0x%08X)", addr, value, value), 5);
-        Util.setVar(addr, value);
-    }
-
-    public int getRegisterValue(PcodeExecutorState<byte[]> state, String name) {
-        RegisterName regname = RegisterName.fromMnemonic(name);
-        long regaddr = regname.memoryAddress();
-        int numbytes = regname.numBytes();
-        return Util.getVar("register", regaddr, numbytes);
-    }
-
-    public int getRAMValue(PcodeExecutorState<byte[]> state, int offset) {
-        return Util.getVar("RAM", offset);
-    }
-
-    public String readString(PcodeExecutorState<byte[]> state, int offset) {
-        String s = "";
-        while (true) {
-            int c = Util.getVar("RAM", offset, 1);
-            if (c == 0) break;
-            offset += 1;
-            s += (char) c;
-        }
-        return s;
-    }
-
-    public void finishFrame(PcodeExecutorState<byte[]> state) {
-        currentThread.setCounter(toAddr(getRegisterValue(state, "PC")));
-        currentFrame.finishAsBranch();
-    }
-
-    public void setRegisterValue(PcodeExecutorState<byte[]> state, String name, int value) {
-        RegisterName regname = RegisterName.fromMnemonic(name);
-        long regaddr = regname.memoryAddress();
-        int numbytes = regname.numBytes();
-        Util.setVar("register", regaddr, numbytes, value);
-        if (name == "SR") {
-            setRegisterValue(state, "C", value >> 0 & 1);
-            setRegisterValue(state, "Z", value >> 1 & 1);
-            setRegisterValue(state, "N", value >> 2 & 1);
-            setRegisterValue(state, "V", value >> 3 & 1);
-        }
-    }
-
-    public int nextInstructionAddr(int addr) {
-        return ((int) getInstructionAfter(toAddr(addr)).getAddress().getOffset());
-    }
-
-    public void callInterruptWrapper(PcodeExecutorState<byte[]> state, int i) {
-        // *(--SPSYS) = R8;
-        // *(--SPSYS) = R9;
-        // *(--SPSYS) = R10;
-        // *(--SPSYS) = R11;
-        // *(--SPSYS) = R12;
-        // *(--SPSYS) = LR;
-        // *(--SPSYS) = PC of first noncompleted instruction;
-        // *(--SPSYS) = SR;
-        // SR[R] = 0;
-        // SR[J] = 0;
-        // SR[M2:M0] = B’010;
-        // SR[I0M] = 1;
-        // PC = EVBA + INTERRUPT_VECTOR_OFFSET;
-        
-        interrupted = true;
-        println("interrupted", 1);
-        int sp = getRegisterValue(state, "SP");
-
-        sp -= 4;
-        storeToAddr(state, sp, getRegisterValue(state, "R8"));
-        sp -= 4;
-        storeToAddr(state, sp, getRegisterValue(state, "R9"));
-        sp -= 4;
-        storeToAddr(state, sp, getRegisterValue(state, "R10"));
-        sp -= 4;
-        storeToAddr(state, sp, getRegisterValue(state, "R11"));
-        sp -= 4;
-        storeToAddr(state, sp, getRegisterValue(state, "R12"));
-        sp -= 4;
-        storeToAddr(state, sp, getRegisterValue(state, "LR"));
-        sp -= 4;
-        storeToAddr(state, sp, getRegisterValue(state, "PC"));
-        sp -= 4;
-        storeToAddr(state, sp, getRegisterValue(state, "SR"));
-
-        if (userMode) {
-            TaskManager.setUserAddr(currentTaskName, sp);
-        }
-
-        setRegisterValue(state, "SP", sp);
-
-        int sr = getRegisterValue(state, "SR");
-        sr &= ~(1 << 15);
-        sr &= ~(1 << 28);
-
-        sr &= ~(0b111 << 22);
-        int mode = switch (i) {
-            case 0 -> 0b010;
-            case 1 -> 0b011;
-            case 2 -> 0b100;
-            case 3 -> 0b101;
-            default -> -1;
-        };
-        sr |= mode << 22;
-        
-        int mask = switch (i) {
-            case 0 -> 0b0001;
-            case 1 -> 0b0011;
-            case 2 -> 0b0111;
-            case 3 -> 0b1111;
-            default -> -1;
-        };
-        sr |= mask << 17;
-
-        setRegisterValue(state, "SR", sr);
-
-        setRegisterValue(state, "PC", 0x8005ab20);
-        finishFrame(state);
-    }
-
-    public class MyUseropLibrary extends AnnotatedPcodeUseropLibrary<byte[]> {
-
-        @PcodeUserop
-        public void CheckAndRestoreInterupt(@OpState PcodeExecutorState<byte[]> state) {
-            println("CheckAndRestoreInterupt", 4);
-
-            // SR ← *(SPSYS++)
-            // PC ← *(SPSYS++)
-            // If ( SR[M2:M0] == {B’010, B’011, B’100, B’101} ) {
-            //     LR ← *(SPSYS++)
-            //     R12 ← *(SPSYS++)
-            //     R11 ← *(SPSYS++)
-            //     R10 ← *(SPSYS++)
-            //     R9 ← *(SPSYS++)
-            //     R8 ← *(SPSYS++)
-            // }
-            // SREG[L] ← 0;
-
-            int sp = getRegisterValue(state, "SP");
-            userMode = TaskManager.getUserAddr(currentTaskName) == sp;
-            // println(String.format("useraddr of %s: %s, sp: %s", currentTaskName, TaskManager.getUserAddr(currentTaskName), sp), 6);
-            int sr = getRegisterValue(state, "SR");
-            setRegisterValue(state, "SR", loadFromAddr(state, sp));
-            sp += 4;
-            setRegisterValue(state, "PC", loadFromAddr(state, sp));
-            sp += 4;
-
-            switch ((sr >> 22) & 0x7) {
-                case 0b010:
-                case 0b011:
-                case 0b100:
-                case 0b101:
-                    setRegisterValue(state, "LR", loadFromAddr(state, sp));
-                    sp += 4;
-                    setRegisterValue(state, "R12", loadFromAddr(state, sp));
-                    sp += 4;
-                    setRegisterValue(state, "R11", loadFromAddr(state, sp));
-                    sp += 4;
-                    setRegisterValue(state, "R10", loadFromAddr(state, sp));
-                    sp += 4;
-                    setRegisterValue(state, "R9", loadFromAddr(state, sp));
-                    sp += 4;
-                    setRegisterValue(state, "R8", loadFromAddr(state, sp));
-                    sp += 4;
-                    break;
-                default:
-                    break;
-            }
-
-            sr = getRegisterValue(state, "SR");
-            sr &= ~(1 << 5);
-
-            setRegisterValue(state, "SP", sp);
-            setRegisterValue(state, "SR", sr);
-            finishFrame(state);
-            interrupted = false;
-        }
-
-        @PcodeUserop
-        public void CheckAndRestoreSupervisor(@OpState PcodeExecutorState<byte[]> state) {
-            println("CheckAndRestoreSupervisor", 4);
-            int sr = getRegisterValue(state, "SR");
-            int mode = (sr >> 22) & 0x7;
-            int sp = getRegisterValue(state, "SP");
-            switch (mode) {
-                case 0b000:
-                    // Privilege Exception Violation
-
-                    // *(--SPSYS) = PC;
-                    // *(--SPSYS) = SR;
-                    // SR[R] = 0;
-                    // SR[J] = 0;
-                    // SR[M2:M0] = B’110;
-                    // SR[EM] = 1;
-                    // SR[GM] = 1;
-                    // PC = EVBA + 0x28;
-
-                    sp -= 4;
-                    storeToAddr(state, sp, getRegisterValue(state, "PC"));
-                    sp -= 4;
-                    storeToAddr(state, sp, getRegisterValue(state, "SR"));
-                    setRegisterValue(state, "SP", sp);
-
-                    sr = getRegisterValue(state, "SR");
-                    sr &= ~(1 << 15);
-                    sr &= ~(1 << 28);
-                    sr &= ~(0b111 << 22);
-                    sr |= 0b110 << 22;
-                    sr |= 1 << 21;
-                    sr |= 1 << 16;
-                    setRegisterValue(state, "SR", sr);
-
-                    println("privilege exception violation!!!!");
-                    setRegisterValue(state, "PC", 0x8005ab20);
-
-                break;
-                case 0b001:
-                    int userAddr = TaskManager.getUserAddr(currentTaskName);
-                    // println(String.format("useraddr of %s: %s, sp: %s", currentTaskName, TaskManager.getUserAddr(currentTaskName), sp), 6);
-                    userMode = userAddr == sp || userAddr + 0x18 == sp;
-                    setRegisterValue(state, "SR", loadFromAddr(state, sp));
-                    sp += 4;
-                    setRegisterValue(state, "PC", loadFromAddr(state, sp));
-                    sp += 4;
-                    setRegisterValue(state, "SP", sp);
-                    break;
-                default:
-                    setRegisterValue(state, "PC", getRegisterValue(state, "LR"));
-            }
-            finishFrame(state);
-        }
-
-        @PcodeUserop
-        public void SupervisorCallSetup(@OpState PcodeExecutorState<byte[]> state) {
-            println("SupervisorCallSetup", 4);
-            
-            int sr = getRegisterValue(state, "SR");
-            int mode = (sr >> 22) & 0x7;
-            println("mode: " + mode, 4);
-            switch (mode) {
-                case 0b000:
-                case 0b001:
-                    // *(--SPSYS) ← PC + 2;
-                    // *(--SPSYS) ← SR;
-                    // PC ← EVBA + 0x100;
-                    // SR[M2:M0] ← B’001;
-
-                    int sp = getRegisterValue(state, "SP");
-                    sp -= 4;
-                    storeToAddr(state, sp, nextInstructionAddr(getRegisterValue(state, "PC")));
-                    sp -= 4;
-                    storeToAddr(state, sp, sr);
-                    setRegisterValue(state, "SP", sp);
-                    
-                    if (userMode) {
-                        TaskManager.setUserAddr(currentTaskName, sp);
-                        userMode = false;
-                    }
-
-                    sr &= ~(0b111 << 22);
-                    sr |= 0b001 << 22;
-                    setRegisterValue(state, "SR", sr);
-                    setRegisterValue(state, "PC", 0x8005ab00);
-                    
-                    break;
-                    
-                default:
-                    // LRCurrent Context ← PC + 2;
-                    // PC ← EVBA + 0x100;
-
-                    setRegisterValue(state, "LR", nextInstructionAddr(getRegisterValue(state, "PC")));
-                    setRegisterValue(state, "PC", 0x8005ab00);
-
-                    break;
-            }
-            finishFrame(state);
-        }
-
-        @PcodeUserop
-        public void doSleep(@OpState PcodeExecutorState<byte[]> state, int i) {
-            println("doSleep", 4);
-        }
-
-        @PcodeUserop
-        public void CoprocessorOp(@OpState PcodeExecutorState<byte[]> state, int i1, int i2, int i3, int i4, int i5) {
-            println("CoprocessorOp", 4);
-        }
     }
 
     public PcodeEmulator getInternalPcodeEmulator(Program program) throws Exception {
@@ -578,654 +176,57 @@ public class CubeSatEmulator extends GhidraScript {
 
         Field library = AbstractPcodeMachine.class.getDeclaredField("library");
         library.setAccessible(true);
-        library.set(inner, new MyUseropLibrary());
+        library.set(inner, new UseropLibrary(context, cpuState, taskManager));
 
         return pcemu;
-    }
-
-    public void printPcodeOps(PcodeOp[] ops) {
-        for (int i = 0; (i < ops.length); i++) {
-            println("PcodeOp[" + i + "] = " + ops[i], -1);
-        }
-    }
-
-    public void printCurrentPcodeOp(PcodeThread<byte[]> thread) {
-        PcodeFrame frame = thread.getFrame();
-        if (frame != null) {    
-            var ops = frame.getCode();
-            var OP_INDEX = frame.index();
-            
-            // 4️⃣ index 번째 op 출력
-            if (0 <= OP_INDEX && OP_INDEX < ops.size()) {
-                println("PcodeOp[" + OP_INDEX + "] = " + ops.get(OP_INDEX));
-            } else {
-                println("Index " + OP_INDEX + " out of range (len=" + ops.size() + ")");
-            }
-        }
-    }
-
-    public static String bytesToHex(byte[] bytes) {
-        StringBuilder sb = new StringBuilder();
-        for (byte b : bytes) {
-            sb.append(String.format("%02X", b));
-        }
-        return sb.toString();
-    }
-
-    public boolean isFirstAddrInBlock(Address addr) {
-        BasicBlockModel bbModel = new BasicBlockModel(currentProgram);
-        CodeBlock startBlock;
-        try {
-            startBlock = bbModel.getFirstCodeBlockContaining(addr, monitor);
-        } catch (CancelledException e) {
-            return false;
-        }
-        long of1 = startBlock.getFirstStartAddress().getOffset();
-        long of2 = addr.getOffset();
-        return of1 == of2;
-    }
-
-    public void adjustPhaseInstructionCount(Instruction instr, Address addr) {
-        if (
-            (
-                instr.getMnemonicString().endsWith("SRF")
-                && !isFirstAddrInBlock(addr)
-                && !instr.getPrevious().getMnemonicString().equals("MFSR")
-                && !instr.getPrevious().getMnemonicString().equals("MTSR")
-                && !instr.getPrevious().getMnemonicString().equals("STDSP")
-            ) || interrupted
-        ) {
-            // println("adjusted", 1);
-            phaseManager.decrementPhaseInstructionCount();
-        }
-    }
-
-    public boolean isInterestingInstr(Instruction instr, Address addr) {
-        String mn = instr.getMnemonicString();
-        return INTERESTING_ADDR == addr.getOffset()
-            || mn.startsWith("ST")
-            || mn.startsWith("LD")
-            || mn.startsWith("MFSR")
-            || mn.startsWith("RETS")
-            || mn.startsWith("RETE")
-            || mn.startsWith("CPC")
-            || mn.startsWith("BR")
-            || mn.startsWith("CSRF")
-            || mn.startsWith("SLEEP")
-            || mn.startsWith("MOV")
-        ;
-    }
-
-    public boolean isInterestingPcodeOp(PcodeOp op, Address addr) {
-        String mn = PcodeOp.getMnemonic(op.getOpcode());
-        return INTERESTING_ADDR == addr.getOffset()
-            || mn.equals("STORE")
-            || mn.equals("LOAD")
-            || mn.equals("COPY")
-            ;
-    }
-    
-    public boolean isIgnoredFunction(Function func) {
-        String fn = func.getName();
-        return fn.startsWith("wdt")
-            || fn.startsWith("sysclk")
-            || fn.startsWith("gpio")
-            || fn.startsWith("sdramc")
-        ;
-    }
-    
-    public void printOutputRegisters(PcodeThread<byte[]> thread, Address addr) {
-        Instruction instr = getInstructionAt(addr);
-        // 1) Instruction 단위 input/output objects 가져오기
-        Object[] outputs = instr.getResultObjects();   // 결과 (= output)
-        
-        // 3) output registers 추출
-        println(">>> Output Registers:");
-        for (Object o : outputs) {
-            if (o instanceof Register) {
-                Register reg = (Register) o;
-                byte[] v = thread.getState().getVar(reg, Reason.INSPECT);
-                println("  " + reg.getName() + " (" + reg.getAddress()  + ") = " + bytesToHex(v));
-            }
-        }
-    }
-    
-    public void printInputRegisters(PcodeThread<byte[]> thread, Address addr) {
-        Instruction instr = getInstructionAt(addr);
-        // 1) Instruction 단위 input/output objects 가져오기
-        Object[] inputs = instr.getInputObjects();
-        
-        // 2) input registers 추출
-        println(">>> Input Registers:");
-        for (Object o : inputs) {
-            if (o instanceof Register) {
-                Register reg = (Register) o;
-                byte[] v = thread.getState().getVar(reg, Reason.INSPECT);
-                println("  " + reg.getName() + " = " + bytesToHex(v));
-            }
-        }
-    }
-
-    public void printAllRegisters(PcodeThread<byte[]> thread) {
-        println(">>> All Registers:");
-        for (RegisterName rn : RegisterName.values()) {
-            int v = getRegisterValue(thread.getState(), rn.name());
-            println("  " + rn.name() + " (" + Util.intToHex((int) rn.memoryAddress())  + ") = " + Util.intToHex(v));
-        }
-    }
-
-    public void printStack() {
-        println(">>> Stack:");
-        // for (int i = 20; i >= 0; i--) {
-        int sp = getRegisterValue(currentThread.getState(), "SP");
-
-        for (int i = 0; i < 8; i++) {
-            int addr = sp + 4 * i;
-            println("  *0x" + Util.intToHex(addr) + " = " + Util.intToHex(getRAMValue(currentThread.getState(), addr)));
-        }
-    }
-
-        
-    public int hookMemoryAccess(Address addr, PcodeOp op, PcodeThread<byte[]> thread) {
-        long a = addr.getOffset();
-        boolean isStore = PcodeOp.getMnemonic(op.getOpcode()).equals("STORE");
-        boolean isLoad = PcodeOp.getMnemonic(op.getOpcode()).equals("LOAD");
-    
-        if (a >= 0xFFFD0000L && a < 0xFFFF7400L) {
-            if (isStore) {
-                Integer res = MmioDevice.storeToMmioDeviceAddr(a, op.getInputs()[2]);
-                if (res == null) {
-                    println("Store to unsupported mmiodevice @ " + addr, 2);
-                    return -1;
-                }
-                return res;
-            } else if (isLoad) {
-                Integer res = MmioDevice.loadFromMmioDeviceAddr(a, op.getOutput());
-                if (res == null) {
-                    println("Load from unsupported mmiodevice @ " + addr, 2);
-                    return -1;
-                }
-                return res;
-            }
-            return -1;
-        }
-        if (isStore) {
-            if (a == 0x1398) {
-                PcodeExecutorState<byte[]> state = thread.getState();
-                int currentTCB = getRAMValue(state, 0x1398);
-                if (currentTCB != 0) {
-                    String newTaskName = readString(state, currentTCB + 0x34);
-                    if (currentTaskName.compareTo(newTaskName) != 0) {
-                        int currentTick = getRAMValue(state, 0x13a0);
-                        println("task switched: " + newTaskName + " (current tickCount: " + currentTick + ")", 6);
-                        TaskManager.switchTask(currentTaskName, newTaskName);
-                        currentTaskName = newTaskName;
-                    }
-                }
-                return 0;
-            }
-            for (int tcb: TaskManager.getAllTCBs()) {
-                if (a == tcb + 0x2c) {
-                    String taskName = readString(thread.getState(), tcb + 0x34);
-                    int prio = getRAMValue(thread.getState(), tcb + 0x2c);
-                    println(String.format("addr: %s", a), 6);
-                    println("Priority of " + taskName + " changed to " + prio, 6);
-                    TaskManager.changePrio(taskName, prio);
-                    return 0;
-                }
-                if (a == tcb + 0x4) {
-                    // String taskName = readString(thread.getState(), tcb + 0x34);
-                    // int time = getRAMValue(thread.getState(), tcb + 0x4);
-                    // println("" + taskName + " delayed until " + time, 6);
-                }
-                if (a == tcb + 0x14) {
-                    String taskName = readString(thread.getState(), tcb + 0x34);
-                    int container = getRAMValue(thread.getState(), tcb + 0x14);
-                    // int delayedTaskList = getRAMValue(thread.getState(), 0x1344);
-                    switch (container) {
-                        case 0x0:
-                            break;
-                        case 0x13e8:
-                        case 0x13fc:
-                        case 0x1410:
-                        case 0x1424:
-                        case 0x1438:
-                            int priority = (container - 0x13e8) / 0x14;
-                            println("State of " + taskName + ": ready (priority: " + priority + ")", 6);
-                            TaskManager.readyTask(taskName, priority);
-                            break;
-                        case 0x1470:
-                            int time = getRAMValue(thread.getState(), tcb + 0x4);
-                            println("State of " + taskName + ": delayed until " + Util.intToHex(time), 6);
-                            TaskManager.delayTask(taskName, time);
-                            break;
-                        case 0x13bc:
-                            println("State of " + taskName + ": suspended", 6);
-                            TaskManager.suspendTask(taskName);
-                            break;
-                        case 0x13d0:
-                            println("State of " + taskName + ": waiting termination", 6);
-                            TaskManager.terminateTask(taskName);
-                            break;
-                        default:
-                            println("Container of " + taskName + " changed to " + Util.intToHex(container), 6);
-                            break;
-                    }
-                }
-                // if (a == tcb + 0x18) {
-                //     String taskName = readString(thread.getState(), tcb + 0x34);
-                //     println("" + taskName + " suspended", 6);
-                // }
-            }
-        }
-        return 0;
-    }
-
-    public int hookSystemRegisterAccess(Varnode node, PcodeOp op, PcodeThread<byte[]> thread) {
-
-        long a = node.getOffset();
-        String mn = PcodeOp.getMnemonic(op.getOpcode());
-        boolean isCopy = mn.equals("COPY");
-
-        if (isCopy && a <= 1020 && node.isRegister()) {
-            Integer value = null;
-            if (a == 0) {
-                value = getRegisterValue(thread.getState(), "SR");
-            } else {
-                value = system_register.onRead((int) a);
-            }
-            
-            if (value != null) {
-                printAllRegisters(thread);
-                Varnode output = op.getOutput();
-                Integer valueBefore = Util.getVar(output);
-                Util.setVar(output, value);
-                println("Overwrote system register @ " + String.format("0x%02X", a) + ": " + String.format("0x%02X", valueBefore) + " -> " + String.format("0x%02X", value), 3);
-                printAllRegisters(thread);
-            } else {
-                println("Copy from unsupported system register @ " + String.format("0x%02X", a));
-                return -1;
-            }
-        }
-        return 0;
-    }
-
-    public int executeInstr(PcodeThread<byte[]> thread) throws AddressFormatException {
-        Address addr = thread.getCounter();
-        Instruction instr = getInstructionAt(addr);
-        boolean detail = isDetail(addr);
-
-        if (detail) {
-            printAllRegisters(thread);
-        }
-        PcodeExecutorState<byte[]> state = thread.getState();
-        
-        // switch (currentInstructionCount) {
-        //     case 40206:
-        //     case 40239:
-        //     case 40452:
-        //     case 40676:
-        //     case 40785:
-        //         tc0.manualTick();
-        //         tc1.manualTick();
-        //         break;
-        // }
-
-        int old_sp = getRegisterValue(state, "SP");
-
-
-        if (addr.getOffset() == 0x8002f900l) {
-            // update pxCurrentTCB
-            // int currentTCB = getRAMValue(state, getRegisterValue(state, "R8"));
-            int currentTCB = getRAMValue(state, 0x1398);
-            String newTaskName = readString(state, currentTCB + 0x34);
-            if (currentTaskName.compareTo(newTaskName) != 0) {
-                int currentTick = getRAMValue(state, 0x13a0);
-                println("task switched 2: " + newTaskName + " (current tickCount: " + currentTick + ")", 6);
-                TaskManager.switchTask(currentTaskName, newTaskName);
-                // println("current tickCount: " + currentTick, 6);
-                currentTaskName = newTaskName;
-
-            }
-        }
-        if (addr.getOffset() == 0x8002fef2l) {
-            // task delete done
-            // int currentTCB = getRAMValue(state, getRegisterValue(state, "R8"));
-            int currentTCB = getRAMValue(state, 0x1398);
-            String taskName = readString(state, currentTCB + 0x34);
-            println("task deleted: " + taskName, 6);
-            TaskManager.deleteTask(taskName);
-        }
-
-        if (addr.getOffset() == 0x80030168l) {
-            // xTaskCreate done
-            int newTCB = getRegisterValue(state, "R4");
-            int prio = getRAMValue(state, newTCB + 0x2c);
-            String taskName = readString(state, newTCB + 0x34);
-            int pxStack = getRAMValue(state, newTCB);
-            int pxTopOfStack = getRAMValue(state, newTCB + 0x30);
-            println(String.format("new task created at %s: %s (%s)", newTCB, taskName, prio), 6);
-            println(String.format("pxStack: 0x%x, pxTopOfStack: 0x%x", pxStack, pxTopOfStack), 6);
-            TaskManager.createTask(taskName, newTCB, prio, pxStack + 0x24);
-        }
-        
-            println("PC = " + thread.getCounter(), 1);
-        // }
-
-        // int numDelayedTasks = getRAMValue(state, getRAMValue(state, 0x13b4));
-        // if (numDelayedTasks != currentNumDelayedTasks) {
-        //     println("# delayed tasks: " + currentNumDelayedTasks + " -> " + numDelayedTasks, 6);
-        //     currentNumDelayedTasks = numDelayedTasks;
-        // }
-        
-        // int numSuspendedTasks = getRAMValue(state, 0x13bc);
-        // if (numSuspendedTasks != currentNumSuspendedTasks) {
-        //     println("# suspended tasks: " + currentNumSuspendedTasks + " -> " + numSuspendedTasks, 6);
-        //     currentNumSuspendedTasks = numSuspendedTasks;
-        // }
-        
-        // int schedulerSuspended = getRAMValue(state, 0x139c);
-        // if (schedulerSuspended != currentSchedulerSuspended) {
-        //     println("# suspended scheduler: " + currentSchedulerSuspended + " -> " + schedulerSuspended, 6);
-        //     currentSchedulerSuspended = schedulerSuspended;
-        // }
-        
-        // int topReadyPriority = getRAMValue(state, 0x13e4);
-        // if (topReadyPriority != currentTopReadyPriority) {
-        //     println("top ready priority: " + currentTopReadyPriority + " -> " + topReadyPriority, 6);
-        //     currentTopReadyPriority = topReadyPriority;
-        // }
-        
-        int[] numReadyTasks = {
-            getRAMValue(state, 0x13e8),
-            getRAMValue(state, 0x13fc),
-            getRAMValue(state, 0x1410),
-            getRAMValue(state, 0x1424),
-            getRAMValue(state, 0x1438),
-        };
-        for (int i = 0; i < numReadyTasks.length; i++) {
-            if (currentNumReadyTasks[i] != numReadyTasks[i]) {
-                println("# ready tasks (priority " + i + "): " + currentNumReadyTasks[i] + " -> " + numReadyTasks[i], 6);
-                currentNumReadyTasks[i] = numReadyTasks[i];
-            }
-        }
-
-        // int[] pxIndex = {
-        //     getRAMValue(state, 0x13ec),
-        //     getRAMValue(state, 0x1400),
-        //     getRAMValue(state, 0x1414),
-        //     getRAMValue(state, 0x1428),
-        //     getRAMValue(state, 0x143c),
-        // };
-        // for (int i = 0; i < pxIndex.length; i++) {
-        //     if (currentPxIndex[i] != pxIndex[i]) {
-        //         println("pxIndex (priority " + i + "): " + currentPxIndex[i] + " -> " + pxIndex[i], 6);
-        //         currentPxIndex[i] = pxIndex[i];
-        //     }
-        // }
-
-        // if (addr.getOffset() == 0x8002c220l) {
-        //     // gs_thread_exit
-        //     int currentTCB = getRAMValue(state, 0x1398);
-        //     String taskName = readString(state, currentTCB + 0x34);
-        //     println("[gs_thread_exit] " + taskName, 6);
-        // }
-
-        adjustPhaseInstructionCount(instr, addr);
-
-        if (addr.getOffset() == 0x8003bb88l) {
-            // Entered _vfprintf_r
-            Util.println("_vfprintf_r called");
-            thread.setCounter(toAddr(getRegisterValue(state, "LR")));
-            currentFrame.finishAsBranch();
-        }
-
-        if (addr.getOffset() == 0x80029ab0l) {
-            // Entered gs_i2c_master_transaction
-            Util.println("gs_i2c_master_transaction called", 2);
-            int tx = getRegisterValue(state, "R10");
-            int txlen = getRegisterValue(state, "R9");
-            Util.println(String.format("tx: 0x%x", tx), 2);
-            Util.println(String.format("*tx: 0x%x", getRAMValue(state, tx)), 2);
-            Util.println(String.format("txlen: %d", txlen), 2);
-        }
-
-        if (isInterestingInstr(instr, addr)) {
-            thread.stepPcodeOp();
-            PcodeFrame frame = thread.getFrame();
-            if (frame != null) {
-                currentFrame = frame;
-                var ops = frame.getCode();
-                println("Executing frame of size " + ops.size());
-
-                // Fixed in local Ghidra
-                // if (mn.startsWith("ST.B")) {
-                //     // ops
-                //     PcodeExecutorState<byte[]> state = thread.getState();
-                //     Varnode rd = ops.get(1).getInput(0);
-                //     Varnode res = ops.get(1).getOutput();
-                //     byte[] rdb = thread.getState().getVar(rd, Reason.INSPECT);
-                //     Integer rdv = Util.byteArrayToInt(rdb);
-                //     byte[] resb = state.getVar(res, Reason.INSPECT);
-                //     Integer resv = Util.byteArrayToInt(resb);
-                //     if (rdv >= 0 && resv < 0) {
-                //         setRegisterValue(state, "C", 1);
-                //     }
-                // }
-
-                while (!frame.isFinished()) {
-                    int id = frame.index();
-                    PcodeOp op = ops.get(id);
-                    boolean interesting = isInterestingPcodeOp(op, addr);
-                    if (interesting) {
-                        printCurrentPcodeOp(thread);
-                    }
-                    Varnode[] inputs = op.getInputs();
-                    Varnode output = op.getOutput();
-                    thread.stepPcodeOp();
-                    
-                    // Fixed in local Ghidra
-                    // if (mn.equals("CPC") && id == 6 && instr.getNumOperands() == 1) {
-                    //     PcodeExecutorState<byte[]> state = thread.getState();
-                    //     Varnode rd = ops.get(1).getInput(0);
-                    //     Varnode res = ops.get(1).getOutput();
-                    //     byte[] rdb = thread.getState().getVar(rd, Reason.INSPECT);
-                    //     Integer rdv = Util.byteArrayToInt(rdb);
-                    //     byte[] resb = state.getVar(res, Reason.INSPECT);
-                    //     Integer resv = Util.byteArrayToInt(resb);
-                    //     if (rdv >= 0 && resv < 0) {
-                    //         setRegisterValue(state, "C", 1);
-                    //     }
-                    // }
-
-                    if (interesting) {
-                        int[] result = null;
-                        if (inputs.length > 0) {
-                            result = Arrays.stream(inputs)
-                            .mapToInt(x -> Util.getVar(x))
-                            .toArray();
-                            
-                            for (int j = 0; (j < result.length); j++) {
-                                int b = result[j];
-                                println("Input " + j + ": " + Util.intToHex(b));
-                            }
-                        }
-
-                        if (result != null && result.length > 1) {
-                            Address memaddr = toAddr(result[1]);
-                            if (hookMemoryAccess(memaddr, op, thread) == -1) {
-                                return -1;
-                            }
-                        }
-
-                        for (Varnode input : inputs) {
-                            if (hookSystemRegisterAccess(input, op, thread) == -1) {
-                                return -1;
-                            }
-                        }
-                        
-                        if (output != null) {
-                            var outputv = Util.getVar(output);
-                            println("Output: " + Util.intToHex(outputv));
-                            if (output.isRegister() && output.getOffset() == 0x103c) {
-                                setRegisterValue(thread.getState(), "PC", outputv);
-                            }
-                        }
-                    }
-                }
-                thread.stepPcodeOp();
-            }
-        } else {
-            thread.stepInstruction();
-        }
-        int sp = getRegisterValue(thread.getState(), "SP");
-        if (sp != old_sp) {
-            printStack();
-        }
-        printOutputRegisters(thread, addr);
-        return 0;
-    }
-
-    void handleInterrupt() {
-        int prio = intc.highestPrio;
-        // Util.println("highestprio: " + prio);
-        PcodeExecutorState<byte[]> state = currentThread.getState();
-        int sr = getRegisterValue(state, "SR");
-        // Util.println("sr: " + Util.intToHex(sr));
-        if (prio != -1) {
-            if (
-                ((sr >> (17 + prio)) & 1) == 0
-                && ((sr >> 16) & 1) == 0
-            ) {
-                callInterruptWrapper(state, prio);
-            }
-        }
-    }
-
-    void flushLogs() {
-        for (PrintWriter p: pw) {
-            if (p != null) p.close();
-        }
-        for (PrintWriter p: taskpw.values()) {
-            if (p != null) p.close();
-        }
     }
 
     @Override
     protected void run() throws Exception {
         parseScriptArgs();
+        initializeHelpers();
 
-        pw = new PrintWriter[PW_FILENAMES.length];
-        for (int i = 1; i < PW_FILENAMES.length; i++) {
-            String fn = PW_FILENAMES[i];
-            File outFile = new File(getSourceFile().getParentFile().getAbsolutePath() + "/log/" + fn);
-            pw[i] = new PrintWriter(new FileWriter(outFile));
-        }
-        
-        java.util.function.Function<String, Void> pln = (String s) -> {
-            println(s);
-            return null;
-        };
-        BiFunction<String, Integer, Void> pln_alt = (String s, Integer i) -> {
-            println(s, i);
-            return null;
-        };
-        Util.setFunctions(pln, pln_alt);
-        Util.currentScript = this;
-
-        java.util.function.Supplier<Integer> getCurrentTick = () -> {
-            return getRAMValue(currentThread.getState(), 0x13a0);
-        };
-        TaskManager.getCurrentTick = getCurrentTick;
-        java.util.function.Supplier<String> getCurrentInstr = () -> {
-            return getPhase().toShortString();
-        };
-        TaskManager.getCurrentInstr = getCurrentInstr;
-
-        log_buffer = new LogBuffer(1000000);
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            log_buffer.dump();
-            flushLogs();
+            logger.dumpAndFlush();
         }));
 
         PcodeEmulator emu = getInternalPcodeEmulator(currentProgram);
         println("Got internal PcodeEmulator: " + emu.getClass().getName());
 
-        new PDCA    ( 0xFFFD0000L, "PDCA"    , -1);
-        new USART   ( 0xFFFD1400L, "USART1"  , -1);
-        new CANIF   ( 0xFFFD1C00L, "CANIF"   , -1);
-        new SPI     ( 0xFFFD1800L, "SPI0"    , -1);
-        new TC      ( 0xFFFD2000L, "TC0"     , 33);
-        new ADCIFA  ( 0xFFFD2400L, "ADCIFA"  , -1);
-        new USART   ( 0xFFFD2800L, "USART4"  , -1);
-        new TWIM    ( 0xFFFD2C00L, "TWIM2"   , 45);
-        new TWIS    ( 0xFFFD3000L, "TWIS2"   , -1);
-        new FLASHC  ( 0xFFFE0000L, "FLASHC"  , -1);
-        new HMATRIX ( 0xFFFE2000L, "HMATRIX" , -1);
-        new SDRAMC  ( 0xFFFE2C00L, "SDRAMC"  , -1);
-        new INTC    ( 0xFFFF0000L, "INTC"    , -1);
-        new PM      ( 0xFFFF0400L, "PM"      , -1);
-        new SCIF    ( 0xFFFF0800L, "SCIF"    , -1);
-        new WDT     ( 0xFFFF1000L, "WDT"     , -1);
-        new GPIO    ( 0xFFFF2000L, "GPIO"    , -1);
-        new USART   ( 0xFFFF2800L, "USART0"  , -1);
-        new USART   ( 0xFFFF2C00L, "USART2"  , -1);
-        new USART   ( 0xFFFF3000L, "USART3"  , -1);
-        new SPI     ( 0xFFFF3400L, "SPI1"    , -1);
-        new TWIM    ( 0xFFFF3800L, "TWIM0"   , 25);
-        new TWIM    ( 0xFFFF3C00L, "TWIM1"   , 26);
-        new TWIS    ( 0xFFFF4000L, "TWIS0"   , -1);
-        new TWIS    ( 0xFFFF4400L, "TWIS1"   , -1);
-        new TC      ( 0xFFFF5800L, "TC1"     , 34);
-
-        new MPU3300 ( "MPU3300", 0x68 );
-        new HMC5843 ( "HMC5843", 0x1E );
-        new EPS ( "EPS", 0x2B );
-        new UTX ( "UTX", 0x61 );
-        new VRX ( "VRX", 0x60 );
-
-        Device.linkAllDevices();
-        intc = (INTC) Device.findDevice("INTC");
-
-        tc0 = (TC) Device.findDevice("TC0");
-        tc1 = (TC) Device.findDevice("TC1");
+        tc0 = (TC) deviceManager.findDevice("TC0");
+        tc1 = (TC) deviceManager.findDevice("TC1");
         
         tc0.startClockThread();
         tc1.startClockThread();
 
-        system_register = new SystemRegister();
-
         var thread = emu.newThread("main");
-        currentThread = thread;
-        Util.currentThread = thread;
-        Address entry = toAddr(0x80000000);
-        thread.overrideCounter(entry);
-        phaseManager.startPhase(getCurrentFunctionName());
-
-        Util.setVar("register", 0x0l, 0x610000);
+        context.currentThread = thread;
+        thread.overrideCounter(toAddr(0x80000000));
+        phaseManager.startPhase(context.getCurrentFunctionName());
+        cpuState.setVar("register", 0x0L, 0x610000);
 
         while (true) {
-            phaseManager.updatePhase(thread.getCounter().getOffset(), getCurrentFunctionName());
-            PhaseManager.Phase phase = getPhase();
+            phaseManager.updatePhase(thread.getCounter().getOffset(), context.getCurrentFunctionName());
+            Phase phase = phaseManager.getCurrentPhase();
             if (phase.getPhaseInstructionCount() % 10000 == 0) {
-                System.err.println(String.format("%s: PC = %s (%s %s)", phase, thread.getCounter(), interrupted, currentTaskName));
+                System.err.println(String.format("%s: PC = %s (%s %s)", phase, thread.getCounter(), context.interrupted, context.currentTaskName));
             }
-            int sp = getRegisterValue(currentThread.getState(), "SP");
-            Util.println("sp: " + Util.intToHex(sp), 1);
-            int n = getRAMValue(thread.getState(), 0x9d88);
-            if (temp != n) {
-                Util.println(String.format("*0x9D88: %x", n), 1);
-                temp = n;
-            }
-            if (executeInstr(thread) == -1) {
+            // int sp = getRegisterValue("SP");
+            // helper.println("sp: " + helper.intToHex(sp), 1);
+            // int n = getRAMValue(0x9d88);
+            // if (temp != n) {
+            //     helper.println(String.format("*0x9D88: %x", n), 1);
+            //     temp = n;
+            // }
+            if (executeManager.executeInstr() == -1) {
                 return;
             }
             phaseManager.incrementPhaseInstructionCount();
-            handleInterrupt();
+            interruptManager.handleInterrupt();
             if (exitCondition()) {
                 tc0.exitClockThread();
                 tc1.exitClockThread();
-                flushLogs();
+                logger.flush();
                 return;
             }
         }

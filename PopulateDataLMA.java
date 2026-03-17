@@ -27,7 +27,7 @@ public class PopulateDataLMA extends GhidraScript {
         String dataBlockName = ".data";
         MemoryBlock dataBlock = mem.getBlock(dataBlockName);
         if (dataBlock == null) {
-            println("Memory block '" + dataBlockName + "' not found.");
+            println(String.format("Memory block '%s' not found.", dataBlockName));
             return;
         }
         
@@ -47,7 +47,7 @@ public class PopulateDataLMA extends GhidraScript {
         // 4) LMA 위치에 이미 블록이 있으면 그냥 실패로 두거나, 필요시 삭제/overlay 처리
         MemoryBlock exist = mem.getBlock(lma);
         if (exist != null) {
-            println("There is already a block at LMA (" + exist.getName() + "); not overwriting.");
+            println(String.format("There is already a block at LMA (%s); not overwriting.", exist.getName()));
             println("Block size = " + exist.getSize());
             return;
         }

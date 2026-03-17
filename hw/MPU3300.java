@@ -1,16 +1,18 @@
 package hw;
 
+import helper.DeviceManager;
+
 public class MPU3300 extends I2CDevice {
 
-    public MPU3300(String name, int addr) {
-        super(name, addr);
+    public MPU3300(DeviceManager deviceManager, String name, int addr) {
+        super(deviceManager, name, addr);
     }
     
     @Override
-    protected void link() {}
+    public void link() {}
 
     @Override
-    protected boolean tx(byte b) {
+    public boolean tx(byte b) {
         return true;
     }
 }

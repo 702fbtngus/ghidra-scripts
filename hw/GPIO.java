@@ -1,12 +1,13 @@
 package hw;
 
+import helper.DeviceManager;
+
 public class GPIO extends MmioDevice {
 
     private final GPIOPort[] ports = new GPIOPort[4];
 
-    public GPIO(long baseAddr, String name, int group) {
-
-        super(baseAddr, name, group, 0x800l);   // 4 ports × 0x200
+    public GPIO(DeviceManager deviceManager, long baseAddr, String name, int group) {
+        super(deviceManager, baseAddr, name, group, 0x800l);   // 4 ports × 0x200
 
         ports[0] = new GPIOPort(0, 0x000, this);
         ports[1] = new GPIOPort(1, 0x200, this);
@@ -18,5 +19,5 @@ public class GPIO extends MmioDevice {
     }
     
     @Override
-    protected void link() {}
+    public void link() {}
 }

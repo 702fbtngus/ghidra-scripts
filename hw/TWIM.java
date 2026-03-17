@@ -1,5 +1,6 @@
 package hw;
 
+import helper.DeviceManager;
 import hw.MmioDevice.Register.AccessType;
 
 public class TWIM extends MmioDevice {
@@ -21,8 +22,8 @@ public class TWIM extends MmioDevice {
 
     private INTC intc;
 
-    public TWIM(long baseAddr, String name, int group) {
-        super(baseAddr, name, group);
+    public TWIM(DeviceManager deviceManager, long baseAddr, String name, int group) {
+        super(deviceManager, baseAddr, name, group);
 
         CR = newRegister(0x00, 0x00, AccessType.WRITE_ONLY);
         CWGR = newRegister(0x04, 0x00, AccessType.READ_WRITE);
@@ -41,8 +42,8 @@ public class TWIM extends MmioDevice {
     }
 
     @Override
-    protected void link() {
-        this.intc = (INTC) Device.findDevice("INTC");
+    public void link() {
+        this.intc = (INTC) deviceManager.findDevice("INTC");
     }
 
     /* =========================
@@ -118,7 +119,7 @@ public class TWIM extends MmioDevice {
     private void completeTx() {
         int sadr = (CMDR.value & 0b111111111) >>> 1;
         byte thrv = (byte) (THR.value & 0xff);
-        int tx = I2CDevice.sendToI2CDevice(sadr, thrv);
+        int tx = deviceManager.sendToI2CDevice(sadr, thrv);
         SR.value |= SR_TXRDY;
         // state = State.STOP;
         // stepFSM();
@@ -127,7 +128,7 @@ public class TWIM extends MmioDevice {
     private void completeRx() {
         int sadr = (CMDR.value & 0b111111111) >>> 1;
         // SR |= SR_TXRDY;
-        byte res = I2CDevice.recvFromI2CDevice(sadr);
+        byte res = deviceManager.recvFromI2CDevice(sadr);
         RHR.value = 0xff & res;
         // state = State.STOP;
         // stepFSM();

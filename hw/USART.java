@@ -1,5 +1,6 @@
 package hw;
 
+import helper.DeviceManager;
 import hw.MmioDevice.Register.AccessType;
 
 public class USART extends MmioDevice {
@@ -11,8 +12,8 @@ public class USART extends MmioDevice {
     Register WPMR, WPSR;
     Register VERSION;
 
-    public USART(long baseAddr, String name, int group) {
-        super(baseAddr, name, group);
+    public USART(DeviceManager deviceManager, long baseAddr, String name, int group) {
+        super(deviceManager, baseAddr, name, group);
 
         // Reset values (from datasheet)
         CR = newRegister(0x00, 0, AccessType.WRITE_ONLY);
@@ -39,7 +40,7 @@ public class USART extends MmioDevice {
     }
     
     @Override
-    protected void link() {}
+    public void link() {}
 
     @Override
     protected boolean onWrite(int ofs, int val) {

@@ -5,7 +5,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-import etc.Util;
+import helper.DeviceManager;
+import helper.Logger;
 
 public class TC extends MmioDevice {
 
@@ -49,8 +50,8 @@ public class TC extends MmioDevice {
     private ScheduledExecutorService scheduler;
     public boolean manual_tick;
 
-    public TC(long baseAddr, String name, int group) {
-        super(baseAddr, name, group);
+    public TC(DeviceManager deviceManager, long baseAddr, String name, int group) {
+        super(deviceManager, baseAddr, name, group);
 
         for (int i = 0; i < 3; i++) {
             ch[i] = new Channel(this, i);
@@ -82,12 +83,12 @@ public class TC extends MmioDevice {
             if ((c.SR.value >> 16 & 1) == 1) {
                 if (c.CV.value == 0xffff) {
                     c.SR.value |= 1;
-                    Util.println("[TC Channel " + i + "] overloaded");
+                    Logger.printlnGlobal(String.format("[TC Channel %d] overloaded", i));
                     c.checkInterrupt();
                     c.CV.value = 0;
                 } else if (c.CV.value == c.RC.value - 1) {
                     c.SR.value |= 1 << 4;
-                    Util.println("[TC Channel " + i + "] RC Compare occurred");
+                    Logger.printlnGlobal(String.format("[TC Channel %d] RC Compare occurred", i));
                     c.checkInterrupt();
                     c.CV.value = 0;
                 } else {
@@ -102,15 +103,15 @@ public class TC extends MmioDevice {
             Channel c = ch[i];
             if ((c.SR.value >> 16 & 1) == 1) {
                 c.SR.value |= 1 << 4;
-                Util.println("[TC Channel " + i + "] manual tick occurred");
+                Logger.printlnGlobal(String.format("[TC Channel %d] manual tick occurred", i));
                 c.checkInterrupt();
             }
         }
     }
 
     @Override
-    protected void link() {
-        intc = (INTC) Device.findDevice("INTC");
+    public void link() {
+        intc = (INTC) deviceManager.findDevice("INTC");
     }
 
     @Override

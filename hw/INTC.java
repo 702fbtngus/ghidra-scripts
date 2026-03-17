@@ -1,6 +1,7 @@
 package hw;
 
-import etc.Util;
+import helper.DeviceManager;
+import helper.Logger;
 import hw.MmioDevice.Register.AccessType;
 
 public class INTC extends MmioDevice {
@@ -17,15 +18,14 @@ public class INTC extends MmioDevice {
     public int highestPrio = -1;
 
 
-    public INTC(long baseAddr, String name, int group) {
-
-        super(baseAddr, name, group);   // INTC base & size (0x000~0x20C)
+    public INTC(DeviceManager deviceManager, long baseAddr, String name, int group) {
+        super(deviceManager, baseAddr, name, group);   // INTC base & size (0x000~0x20C)
 
         resetRegisters();
     }
     
     @Override
-    protected void link() {}
+    public void link() {}
 
 
     private void resetRegisters() {
@@ -87,7 +87,7 @@ public class INTC extends MmioDevice {
         // --------------------
         if (ofs < 0x100) {
             int index = ofs >>> 2;
-            Util.println("INTC IPR index = " + index);
+            Logger.printlnGlobal("INTC IPR index = " + index);
             if (index < 64)
                 return IPR[index].value;
             return null;
@@ -98,7 +98,7 @@ public class INTC extends MmioDevice {
         // --------------------
         if (ofs >= 0x100 && ofs < 0x200) {
             int index = (ofs - 0x100) >>> 2;
-            Util.println("INTC IRR index = " + index);
+            Logger.printlnGlobal("INTC IRR index = " + index);
             if (index < 64)
                 return IRR[index].value;
             return null;
@@ -109,7 +109,7 @@ public class INTC extends MmioDevice {
         // --------------------
         if (ofs >= 0x200 && ofs < 0x210) {
             int index = (0x20c - ofs) >>> 2;
-            Util.println("INTC ICR index = " + index);
+            Logger.printlnGlobal("INTC ICR index = " + index);
             if (index < 4)
                 return ICR[index].value;
             return null;

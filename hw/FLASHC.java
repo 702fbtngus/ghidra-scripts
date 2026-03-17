@@ -1,5 +1,6 @@
 package hw;
 
+import helper.DeviceManager;
 import hw.MmioDevice.Register.AccessType;
 
 public class FLASHC extends MmioDevice {
@@ -12,13 +13,13 @@ public class FLASHC extends MmioDevice {
     Register FGPFRHI;    // 0x14 Read-only
     Register FGPFRLO;    // 0x18 Read-only
 
-    public FLASHC(long baseAddr, String name, int group) {
-        super(baseAddr, name, group);
+    public FLASHC(DeviceManager deviceManager, long baseAddr, String name, int group) {
+        super(deviceManager, baseAddr, name, group);
         resetRegisters();
     }
     
     @Override
-    protected void link() {}
+    public void link() {}
 
     private void resetRegisters() {
         // RW registers reset to 0

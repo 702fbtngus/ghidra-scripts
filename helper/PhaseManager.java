@@ -1,3 +1,5 @@
+package helper;
+
 public final class PhaseManager {
     private static final long[] PHASE_BOUNDARIES = {
         0x8001db06L,
@@ -131,7 +133,7 @@ public final class PhaseManager {
         }
 
         public String toShortString() {
-            return "P" + phaseNumber + " #" + phaseInstructionCount;
+            return String.format("P%d #%d", phaseNumber, phaseInstructionCount);
         }
 
         @Override

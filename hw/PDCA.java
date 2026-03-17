@@ -1,7 +1,8 @@
 package hw;
 
-import etc.Util;
-import etc.Util.DataSize;
+import helper.DeviceManager;
+import helper.ByteUtil.DataSize;
+import helper.Logger;
 import hw.MmioDevice.Register.AccessType;
 
 public class PDCA extends MmioDevice {
@@ -12,9 +13,8 @@ public class PDCA extends MmioDevice {
     PDCAPerfMonitor mon;
     Register VERSION;
 
-    public PDCA(long baseAddr, String name, int group) {
-
-        super(baseAddr, name, group, 0x1000l);
+    public PDCA(DeviceManager deviceManager, long baseAddr, String name, int group) {
+        super(deviceManager, baseAddr, name, group, 0x1000l);
 
         for (int i = 0; i < NUM_CHANNELS; i++) {
             channels[i] = new PDCAChannel(i, i * 0x40, this);
@@ -27,11 +27,11 @@ public class PDCA extends MmioDevice {
     }
     
     @Override
-    protected void link() {}
+    public void link() {}
 
     public void transferData(int mar, int psr, DataSize size) {
         
-        Util.println("[PDCA transferData] MAR = " + Util.intToHex(mar) + ", PSR = " + Util.intToHex(psr), 2);
+        Logger.printlnGlobal(String.format("[PDCA transferData] MAR = 0x%08X, PSR = 0x%08X", mar, psr), 2);
         boolean is_rx;
         if ((psr >= 0 && psr <= 12)
          || (psr >= 31 && psr <= 33)
@@ -84,9 +84,9 @@ public class PDCA extends MmioDevice {
         };
 
         if (is_rx) {
-            MmioDevice.loadFromMmioDeviceAddr(addr, mar, size);
+            deviceManager.loadFromMmioDeviceAddr(addr, mar);
         } else {
-            MmioDevice.storeToMmioDeviceAddr(addr, mar, size);
+            deviceManager.storeToMmioDeviceAddr(addr, mar, size);
         }
 
     }

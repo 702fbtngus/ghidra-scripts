@@ -1,5 +1,6 @@
 package hw;
 
+import helper.DeviceManager;
 import hw.MmioDevice.Register.AccessType;
 
 public class HMATRIX extends MmioDevice {
@@ -19,14 +20,13 @@ public class HMATRIX extends MmioDevice {
     // SFR0~SFR15 (0x0110 ~ 0x014C)
     Register[] SFR = new Register[16];
 
-    public HMATRIX(long baseAddr, String name, int group) {
-
-        super(baseAddr, name, group);
+    public HMATRIX(DeviceManager deviceManager, long baseAddr, String name, int group) {
+        super(deviceManager, baseAddr, name, group);
         resetRegisters();
     }
     
     @Override
-    protected void link() {}
+    public void link() {}
 
     private void resetRegisters() {
 

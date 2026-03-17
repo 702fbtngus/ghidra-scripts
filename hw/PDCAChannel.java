@@ -1,6 +1,6 @@
 package hw;
 
-import etc.Util.DataSize;
+import helper.ByteUtil.DataSize;
 import hw.MmioDevice.Register;
 import hw.MmioDevice.Register.AccessType;
 

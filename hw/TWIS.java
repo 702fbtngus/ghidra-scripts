@@ -1,5 +1,6 @@
 package hw;
 
+import helper.DeviceManager;
 import hw.MmioDevice.Register.AccessType;
 
 public class TWIS extends MmioDevice {
@@ -7,9 +8,8 @@ public class TWIS extends MmioDevice {
     Register CR, NBYTES, TR, RHR, THR, PECR, SR;
     Register IER, IDR, IMR, SCR, PR, VR;
 
-    public TWIS(long baseAddr, String name, int group) {
-
-        super(baseAddr, name, group);
+    public TWIS(DeviceManager deviceManager, long baseAddr, String name, int group) {
+        super(deviceManager, baseAddr, name, group);
 
         CR = newRegister(0x00, 0, AccessType.READ_WRITE);
         NBYTES = newRegister(0x04, 0, AccessType.READ_WRITE);
@@ -27,7 +27,7 @@ public class TWIS extends MmioDevice {
     }
     
     @Override
-    protected void link() {}
+    public void link() {}
 
     @Override
     protected boolean onWrite(int ofs, int v) {

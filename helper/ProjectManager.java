@@ -1,4 +1,4 @@
-// ProjectManager.java
+package helper;
 import ghidra.app.script.GhidraScript;
 import ghidra.framework.model.*;
 
