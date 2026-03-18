@@ -61,7 +61,13 @@ def recv_loop(sock: socket.socket):
 
 def main():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.connect((HOST, PORT))
+        print("[+] 서버에 연결 중...")
+        while True:
+            try:
+                s.connect((HOST, PORT))
+                break
+            except ConnectionRefusedError:
+                time.sleep(1)
         # 필요시 작은 패킷도 즉시 보내고 싶으면 활성화
         s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 

@@ -3,7 +3,6 @@ package helper;
 import java.util.function.IntSupplier;
 import java.util.function.LongSupplier;
 
-import ghidra.app.script.GhidraScript;
 import ghidra.pcode.emu.PcodeThread;
 import ghidra.pcode.exec.PcodeExecutorStatePiece.Reason;
 import ghidra.program.model.address.Address;

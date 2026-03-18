@@ -41,7 +41,7 @@ public class UseropLibrary extends AnnotatedPcodeUseropLibrary<byte[]> {
         int sp = cpuState.getRegisterValue("SP");
         int userAddr = taskManager.getUserAddr(context.currentTaskName);
         Logger.printlnGlobal(String.format("useraddr of %s: %s, sp: %s", context.currentTaskName, taskManager.getUserAddr(context.currentTaskName), sp), 6);
-        context.userMode = userAddr == sp || userAddr + 0x18 == sp;
+        context.userMode = userAddr == sp || userAddr + 0x0c == sp || userAddr + 0x18 == sp;
         int sr = cpuState.getRegisterValue("SR");
         cpuState.setRegisterValue("SR", cpuState.loadFromAddr(sp));
         sp += 4;
@@ -120,7 +120,7 @@ public class UseropLibrary extends AnnotatedPcodeUseropLibrary<byte[]> {
             case 0b001:
                 int userAddr = taskManager.getUserAddr(context.currentTaskName);
                 Logger.printlnGlobal(String.format("useraddr of %s: %s, sp: %s", context.currentTaskName, taskManager.getUserAddr(context.currentTaskName), sp), 6);
-                context.userMode = userAddr == sp || userAddr + 0x18 == sp;
+                context.userMode = userAddr == sp || userAddr + 0x0c == sp || userAddr + 0x18 == sp;
                 cpuState.setRegisterValue("SR", cpuState.loadFromAddr(sp));
                 sp += 4;
                 cpuState.setRegisterValue("PC", cpuState.loadFromAddr(sp));

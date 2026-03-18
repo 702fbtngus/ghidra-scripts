@@ -1,7 +1,5 @@
 package helper;
 
-import ghidra.pcode.exec.PcodeExecutorState;
-import ghidra.util.task.Task;
 import hw.INTC;
 
 public final class InterruptManager {

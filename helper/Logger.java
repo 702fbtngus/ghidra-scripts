@@ -181,10 +181,10 @@ public class Logger {
             // pw[1].println("skipping task log due to interrupted");
             return;
         }
-        if (!userModeSupplier.getAsBoolean()) {
-            // pw[1].println("skipping task log due to kernel mode");
-            return;
-        }
+        // if (!userModeSupplier.getAsBoolean()) {
+        //     pw[1].println("skipping task log due to kernel mode");
+        //     return;
+        // }
 
         getOrCreateWriter(taskpw, "task", taskName).println(s);
     }

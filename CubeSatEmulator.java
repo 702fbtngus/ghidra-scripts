@@ -57,6 +57,7 @@ public class CubeSatEmulator extends GhidraScript {
             false
             || (context.instructionLimit >= 0 && phaseManager.getTotalInstructionCount() >= context.instructionLimit)
             || (phase.getPhaseNumber() == 28 && phase.getPhaseInstructionCount() > 2000000)
+            || context.currentThread.getCounter().getOffset() == 0x80017208L
             // || (currentPhase == 1)
         );
     }
@@ -213,13 +214,13 @@ public class CubeSatEmulator extends GhidraScript {
             if (phase.getPhaseInstructionCount() % 10000 == 0) {
                 System.err.println(String.format("%s: PC = %s (%s %s)", phase, thread.getCounter(), context.interrupted, context.currentTaskName));
             }
-            int sp = cpuState.getRegisterValue("SP");
-            logger.println("sp: " + ByteUtil.intToHex(sp), 1);
-            int n = cpuState.getRAMValue(0x9d88);
-            if (temp != n) {
-                logger.println(String.format("*0x9D88: %x", n), 1);
-                temp = n;
-            }
+            // int sp = cpuState.getRegisterValue("SP");
+            // logger.println("sp: " + ByteUtil.intToHex(sp), 1);
+            // int n = cpuState.getRAMValue(0x9d88);
+            // if (temp != n) {
+            //     logger.println(String.format("*0x9D88: %x", n), 1);
+            //     temp = n;
+            // }
             if (executeManager.executeInstr() == -1) {
                 return;
             }
