@@ -193,6 +193,15 @@ public abstract class MmioDevice extends Device {
         deviceManager.cpuState.setVar(node, value);
         return 0;
     }
+    public final Integer load(int offset, Varnode node, DataSize size) {
+        Integer value = readSized(offset, size);
+
+        if (value == null) {
+            return null;
+        }
+        deviceManager.cpuState.setVar(node, value, size.numBytes());
+        return 0;
+    }
 
     // ------------------------------
     // Subclass responsibility

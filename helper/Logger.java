@@ -124,7 +124,7 @@ public class Logger {
         } else if (i != 0) {
             printInner(s1, i);
         }
-        printInner(s, 0);
+        printInner(s1, 0);
     }
 
     private void printInner(String s, int i) {
@@ -174,15 +174,15 @@ public class Logger {
     private void printTask(String s) {
         String taskName = currentTaskNameSupplier.get();
         if (taskName == null || taskName.isEmpty()) {
-            pw[1].println("taskName is Empty");
+            // pw[1].println("taskName is Empty");
             return;
         }
         if (interruptedSupplier.getAsBoolean()) {
-            pw[1].println("skipping task log due to interrupted");
+            // pw[1].println("skipping task log due to interrupted");
             return;
         }
         if (!userModeSupplier.getAsBoolean()) {
-            pw[1].println("skipping task log due to kernel mode");
+            // pw[1].println("skipping task log due to kernel mode");
             return;
         }
 

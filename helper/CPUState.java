@@ -124,6 +124,10 @@ public final class CPUState {
         getState().setVar(node, ByteUtil.intToByteArray(value, node.getSize()));
     }
 
+    public void setVar(Varnode node, int value, int numbytes) {
+        getState().setVar(node, ByteUtil.intToByteArray(value, numbytes));
+    }
+
     public int getRegisterValue(String name) {
         RegisterName regname = RegisterName.fromMnemonic(name);
         return getVar("register", regname.memoryAddress(), regname.numBytes());

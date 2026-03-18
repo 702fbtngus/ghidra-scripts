@@ -84,7 +84,7 @@ public class PDCA extends MmioDevice {
         };
 
         if (is_rx) {
-            deviceManager.loadFromMmioDeviceAddr(addr, mar);
+            deviceManager.loadFromMmioDeviceAddr(addr, mar, size);
         } else {
             deviceManager.storeToMmioDeviceAddr(addr, mar, size);
         }

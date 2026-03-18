@@ -66,6 +66,8 @@ public class CubeSatEmulator extends GhidraScript {
     public TC tc0;
     public TC tc1;
 
+    int temp = -1;
+
     public void parseScriptArgs() {
         for (String arg : getScriptArgs()) {
             if (arg.equals("--to-main")) {
@@ -211,13 +213,13 @@ public class CubeSatEmulator extends GhidraScript {
             if (phase.getPhaseInstructionCount() % 10000 == 0) {
                 System.err.println(String.format("%s: PC = %s (%s %s)", phase, thread.getCounter(), context.interrupted, context.currentTaskName));
             }
-            // int sp = getRegisterValue("SP");
-            // helper.println("sp: " + helper.intToHex(sp), 1);
-            // int n = getRAMValue(0x9d88);
-            // if (temp != n) {
-            //     helper.println(String.format("*0x9D88: %x", n), 1);
-            //     temp = n;
-            // }
+            int sp = cpuState.getRegisterValue("SP");
+            logger.println("sp: " + ByteUtil.intToHex(sp), 1);
+            int n = cpuState.getRAMValue(0x9d88);
+            if (temp != n) {
+                logger.println(String.format("*0x9D88: %x", n), 1);
+                temp = n;
+            }
             if (executeManager.executeInstr() == -1) {
                 return;
             }
