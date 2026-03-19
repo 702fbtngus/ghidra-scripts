@@ -33,7 +33,7 @@ public class PDCAChannel extends MmioRegion {
     protected void afterWrite(int ofs, int value) {
         switch (ofs) {
             case 0x08:
-                checkTransferData();
+                pdca.serviceChannel(this);
                 return;
 
             case 0x14:
@@ -49,32 +49,45 @@ public class PDCAChannel extends MmioRegion {
                     // Transfer Enable
                     SR.value |= 1;
                 }
-                checkTransferData();
+                pdca.serviceChannel(this);
                 return;
         }
     }
 
-    private void checkTransferData() {
+    boolean isEnabled() {
+        return (SR.value & 1) != 0;
+    }
+
+    DataSize getTransferSize() {
+        switch (MR.value & 0b11) {
+            case 0:
+                return DataSize.BYTE_SIZE;
+            case 1:
+                return DataSize.HALFWORD_SIZE;
+            case 2:
+                return DataSize.WORD_SIZE;
+            default:
+                throw new IllegalArgumentException("MR.SIZE = 3 is reserved");
+        }
+    }
+    
+    void tryTransferData() {
+        if (!isEnabled() || TCR.value <= 0) {
+            println("tryTransferData called but PDCA not enabled");
+            return;
+        }
+        println(String.format("tryTransferData called: MAR=0x%08X", MAR.value));
         while (
             (CR.value & 1) == 1
             && TCR.value > 0
         ) {
-            DataSize size;
-            switch (MR.value & 0b11) {
-                case 0:
-                    size = DataSize.BYTE_SIZE;
-                    break;
-                case 1:
-                    size = DataSize.HALFWORD_SIZE;
-                    break;
-                case 2:
-                    size = DataSize.WORD_SIZE;
-                    break;
-                default:
-                    throw new IllegalArgumentException("MR.SIZE = 3 is reserved");
+            DataSize size = getTransferSize();
+            if (!pdca.transferData(MAR.value, PSR.value, size)) {
+                return;
             }
-            pdca.transferData(MAR.value, PSR.value, size);
+            println(String.format("transferData done: MAR=0x%08X", MAR.value));
             MAR.value += size.numBytes();
+            println(String.format("MAR incremented: MAR=0x%08X", MAR.value));
             TCR.value -= 1;
         }
     }

@@ -136,6 +136,9 @@ public final class CPUState {
     public int getRAMValue(int offset) {
         return getVar("RAM", offset);
     }
+    public int getRAMValue(int offset, int numbytes) {
+        return getVar("RAM", offset, numbytes);
+    }
 
     public String readString(int offset) {
         StringBuilder s = new StringBuilder();

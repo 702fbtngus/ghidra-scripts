@@ -70,7 +70,9 @@ public class TC extends MmioDevice {
             return t;
         });
         Runnable task = () -> tick();
-        scheduler.scheduleAtFixedRate(task, 0, 31, TimeUnit.MICROSECONDS); // 32KHz oscillator
+        // scheduler.scheduleAtFixedRate(task, 0, 31, TimeUnit.MICROSECONDS); // 32KHz oscillator
+        scheduler.scheduleAtFixedRate(task, 0, 310, TimeUnit.MICROSECONDS); // 3.2KHz oscillator
+        // scheduler.scheduleAtFixedRate(task, 0, 31, TimeUnit.MILLISECONDS); // 32Hz oscillator
     }
 
     public void exitClockThread() {

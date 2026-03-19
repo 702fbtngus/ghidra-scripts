@@ -70,9 +70,9 @@ public final class DeviceManager {
         new TC      ( this, 0xFFFF5800L, "TC1"     , 34);
 
         // I2C devicesthis
-        new MPU3300 ( this, "MPU3300", 0x68 );
-        new HMC5843 ( this, "HMC5843", 0x1E );
-        new EPS     ( this, "EPS", 0x2B );
+        // new MPU3300 ( this, "MPU3300", 0x68 );
+        // new HMC5843 ( this, "HMC5843", 0x1E );
+        // new EPS     ( this, "EPS", 0x2B );
         new UTX     ( this, "UTX", 0x61 );
         new VRX     ( this, "VRX", 0x60 );
     }
@@ -83,6 +83,10 @@ public final class DeviceManager {
 
     public String getCurrentDeviceName() {
         return currentDeviceName;
+    }
+
+    public void setCurrentDeviceName(String name) {
+        currentDeviceName = name;
     }
 
     public void linkAllDevices() {
@@ -118,12 +122,8 @@ public final class DeviceManager {
         }
         int offset = (int) (addr - mmioDevice.base);
         currentDeviceName = mmioDevice.name;
-        try {
-            Logger.printlnGlobal(String.format("Store to %s @ 0x%08X", mmioDevice.name, addr), 2);
-            return mmioDevice.store(offset, node);
-        } finally {
-            currentDeviceName = null;
-        }
+        Logger.printlnGlobal(String.format("Store to %s @ 0x%08X", mmioDevice.name, addr), 2);
+        return mmioDevice.store(offset, node);
     }
 
     public Integer loadFromMmioDeviceAddr(long addr, Varnode node) {
@@ -133,12 +133,8 @@ public final class DeviceManager {
         }
         int offset = (int) (addr - mmioDevice.base);
         currentDeviceName = mmioDevice.name;
-        try {
-            Logger.printlnGlobal(String.format("Load from %s @ 0x%08X", mmioDevice.name, addr), 2);
-            return mmioDevice.load(offset, node);
-        } finally {
-            currentDeviceName = null;
-        }
+        Logger.printlnGlobal(String.format("Load from %s @ 0x%08X", mmioDevice.name, addr), 2);
+        return mmioDevice.load(offset, node);
     }
 
     public Integer loadFromMmioDeviceAddr(long addr, long dest) {
@@ -148,12 +144,8 @@ public final class DeviceManager {
         }
         int offset = (int) (addr - mmioDevice.base);
         currentDeviceName = mmioDevice.name;
-        try {
-            Logger.printlnGlobal(String.format("Load from %s @ 0x%08X", mmioDevice.name, addr), 2);
-            return mmioDevice.load(offset, dest);
-        } finally {
-            currentDeviceName = null;
-        }
+        Logger.printlnGlobal(String.format("Load from %s @ 0x%08X", mmioDevice.name, addr), 2);
+        return mmioDevice.load(offset, dest);
     }
 
     public Integer loadFromMmioDeviceAddr(long addr, long dest, DataSize size) {
@@ -163,12 +155,8 @@ public final class DeviceManager {
         }
         int offset = (int) (addr - mmioDevice.base);
         currentDeviceName = mmioDevice.name;
-        try {
-            Logger.printlnGlobal(String.format("Load from %s @ 0x%08X", mmioDevice.name, addr), 2);
-            return mmioDevice.load(offset, dest, size);
-        } finally {
-            currentDeviceName = null;
-        }
+        Logger.printlnGlobal(String.format("Load from %s @ 0x%08X", mmioDevice.name, addr), 2);
+        return mmioDevice.load(offset, dest, size);
     }
 
     public Integer storeToMmioDeviceAddr(long addr, long src, DataSize size) {
@@ -178,12 +166,8 @@ public final class DeviceManager {
         }
         int offset = (int) (addr - mmioDevice.base);
         currentDeviceName = mmioDevice.name;
-        try {
-            Logger.printlnGlobal(String.format("Store to %s @ 0x%08X (size: %s)", mmioDevice.name, addr, size), 2);
-            return mmioDevice.store(offset, src, size);
-        } finally {
-            currentDeviceName = null;
-        }
+        Logger.printlnGlobal(String.format("Store to %s @ 0x%08X (size: %s)", mmioDevice.name, addr, size), 2);
+        return mmioDevice.store(offset, src, size);
     }
 
     public I2CDevice findI2CDevice(int addr) {
@@ -203,17 +187,13 @@ public final class DeviceManager {
             return 0;
         }
         currentDeviceName = device.name;
-        try {
-            Logger.printlnGlobal(String.format("Send to I2CDevice %s @ 0x%08X: 0x%02X", device.name, addr, Byte.toUnsignedInt(value)), 2);
-            if (("VRX".equals(device.name) || "UTX".equals(device.name)) && !device.tx(value)) {
-                Logger.printlnGlobal(device.getClass().getSimpleName() + ": invalid tx value =0x" + Integer.toHexString(value));
-                return null;
-            }
-            Logger.printlnGlobal("Sent successfully", 2);
-            return 0;
-        } finally {
-            currentDeviceName = null;
+        Logger.printlnGlobal(String.format("Send to I2CDevice %s @ 0x%08X: 0x%02X", device.name, addr, Byte.toUnsignedInt(value)), 2);
+        if (("VRX".equals(device.name) || "UTX".equals(device.name)) && !device.tx(value)) {
+            Logger.printlnGlobal(device.getClass().getSimpleName() + ": invalid tx value =0x" + Integer.toHexString(value));
+            return null;
         }
+        Logger.printlnGlobal("Sent successfully", 2);
+        return 0;
     }
 
     public Byte recvFromI2CDevice(int addr) {
@@ -222,17 +202,13 @@ public final class DeviceManager {
             return 0;
         }
         currentDeviceName = device.name;
-        try {
-            Logger.printlnGlobal(String.format("Recv from I2CDevice %s @ 0x%08X", device.name, addr), 2);
-            Byte value = device.rx();
-            if (("VRX".equals(device.name) || "UTX".equals(device.name)) && value == null) {
-                Logger.printlnGlobal(device.getClass().getSimpleName() + ": invalid rx");
-                return null;
-            }
-            Logger.printlnGlobal(String.format("Received successfully: 0x%02X", Byte.toUnsignedInt(value)), 2);
-            return value;
-        } finally {
-            currentDeviceName = null;
+        Logger.printlnGlobal(String.format("Recv from I2CDevice %s @ 0x%08X", device.name, addr), 2);
+        Byte value = device.rx();
+        if (("VRX".equals(device.name) || "UTX".equals(device.name)) && value == null) {
+            Logger.printlnGlobal(device.getClass().getSimpleName() + ": invalid rx");
+            return null;
         }
+        Logger.printlnGlobal(String.format("Received successfully: 0x%02X", Byte.toUnsignedInt(value)), 2);
+        return value;
     }
 }

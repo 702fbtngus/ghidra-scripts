@@ -68,9 +68,9 @@ public abstract class MmioDevice extends Device {
     // Concrete store()
     // ------------------------------
     public final Integer write(int offset, int value) {
-        Logger.printlnGlobal(String.format("offset = %02x, value = %08x", offset, value), 2);
+        println(String.format("offset = %02x, value = %08x", offset, value));
         if (!onWrite(offset, value)) {
-            Logger.printlnGlobal(getClass().getSimpleName() +
+            println(getClass().getSimpleName() +
                 ": invalid write offset=0x" + Integer.toHexString(offset));
             return null;
         }
@@ -78,13 +78,13 @@ public abstract class MmioDevice extends Device {
     }
 
     public final Integer writeSized(int offset, int value, DataSize size) {
-        Logger.printlnGlobal(String.format("offset = %02x, value = %08x", offset, value), 2);
+        println(String.format("offset = %02x, value = %08x", offset, value));
         int regOffset = offset & ~0x3;
         int lane = offset & 0x3;
         if (!((size == DataSize.BYTE_SIZE)
             || (size == DataSize.HALFWORD_SIZE && (lane == 0 || lane == 2))
             || (size == DataSize.WORD_SIZE && lane == 0))) {
-            Logger.printlnGlobal(String.format(
+            println(String.format(
                 "%s: invalid write alignment offset=0x%X size=%s",
                 getClass().getSimpleName(),
                 offset,
@@ -96,14 +96,14 @@ public abstract class MmioDevice extends Device {
         // Can get value from write-only registers
         Register reg = registersByOffset.get(regOffset);
         if (reg == null) {
-            Logger.printlnGlobal(getClass().getSimpleName() +
+            println(getClass().getSimpleName() +
                 ": invalid write offset=0x" + Integer.toHexString(regOffset));
             return null;
         }
 
         int mergedValue = mergeValue(reg.value, value, lane, size);
         if (!onWrite(regOffset, mergedValue)) {
-            Logger.printlnGlobal(getClass().getSimpleName() +
+            println(getClass().getSimpleName() +
                 ": invalid write offset=0x" + Integer.toHexString(regOffset));
             return null;
         }
@@ -130,12 +130,12 @@ public abstract class MmioDevice extends Device {
         Integer value = onRead(offset);
 
         if (value == null) {
-            Logger.printlnGlobal(getClass().getSimpleName() +
+            println(getClass().getSimpleName() +
             ": invalid read offset=0x" + Integer.toHexString(offset));
             return null;
         }
         
-        Logger.printlnGlobal(String.format("offset = %02x, value = %08x", offset, value), 2);
+        println(String.format("offset = %02x, value = %08x", offset, value));
         return value;
     }
 
@@ -145,7 +145,7 @@ public abstract class MmioDevice extends Device {
         if (!((size == DataSize.BYTE_SIZE)
             || (size == DataSize.HALFWORD_SIZE && (lane == 0 || lane == 2))
             || (size == DataSize.WORD_SIZE && lane == 0))) {
-            Logger.printlnGlobal(String.format(
+            println(String.format(
                 "%s: invalid read alignment offset=0x%X size=%s",
                 getClass().getSimpleName(),
                 offset,
@@ -156,13 +156,13 @@ public abstract class MmioDevice extends Device {
 
         Integer value = onRead(regOffset);
         if (value == null) {
-            Logger.printlnGlobal(getClass().getSimpleName() +
+            println(getClass().getSimpleName() +
             ": invalid read offset=0x" + Integer.toHexString(regOffset));
             return null;
         }
 
         int narrowedValue = extractValue(value, lane, size);
-        Logger.printlnGlobal(String.format("offset = %02x, value = %08x", offset, narrowedValue), 2);
+        println(String.format("offset = %02x, value = %08x", offset, narrowedValue));
         return narrowedValue;
     }
 
@@ -176,8 +176,10 @@ public abstract class MmioDevice extends Device {
         return 0;
     }
     public final Integer load(int offset, long addr, DataSize size) {
+        println(String.format("Load addr: 0x%08X", addr));
         Integer value = readSized(offset, size);
-
+        println(String.format("Load value: 0x%X", value));
+        
         if (value == null) {
             return null;
         }

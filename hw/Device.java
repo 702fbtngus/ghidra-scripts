@@ -1,6 +1,7 @@
 package hw;
 
 import helper.DeviceManager;
+import helper.Logger;
 
 public abstract class Device {
     public final String name;
@@ -16,4 +17,10 @@ public abstract class Device {
     // Subclass responsibility
     // ------------------------------
     public abstract void link();
+
+    public void println(String msg) {
+        deviceManager.setCurrentDeviceName(this.name);
+        Logger.printlnGlobal(String.format("%s: %s", name, msg), 2);
+        deviceManager.setCurrentDeviceName(null);
+    }
 }

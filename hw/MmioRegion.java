@@ -76,4 +76,8 @@ public abstract class MmioRegion {
 
         return this;
     }
+
+    protected void println(String message) {
+        owner.println(message);
+    }
 }

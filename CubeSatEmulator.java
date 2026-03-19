@@ -56,8 +56,8 @@ public class CubeSatEmulator extends GhidraScript {
             // (currentPhase == 28)
             false
             || (context.instructionLimit >= 0 && phaseManager.getTotalInstructionCount() >= context.instructionLimit)
-            || (phase.getPhaseNumber() == 28 && phase.getPhaseInstructionCount() > 2000000)
-            || context.currentThread.getCounter().getOffset() == 0x80017208L
+            || (phase.getPhaseNumber() == 28 && phase.getPhaseInstructionCount() > 800000)
+            // || context.currentThread.getCounter().getOffset() == 0x80017208L
             // || (currentPhase == 1)
         );
     }

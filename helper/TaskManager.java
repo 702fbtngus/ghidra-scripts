@@ -105,7 +105,7 @@ public class TaskManager {
 
     public void delayTask(String name, int until) {
         Task task = taskMap.get(name);
-        task.state = String.format("D %s", until);;
+        task.state = String.format("D %x", until);;
     }
 
     public void suspendTask(String name) {
@@ -282,7 +282,7 @@ public class TaskManager {
         String line = groups.stream()
             .map(this::buildStateGroup)
             .collect(Collectors.joining(GROUP_GAP));
-        line = String.format("[ %-12s | %-7s ]    %s", getCurrentInstr.get(), getCurrentTick.get(), line);
+        line = String.format("[ %-12s | %-7x ]    %s", getCurrentInstr.get(), getCurrentTick.get(), line);
         //     Task task = taskList[i];
         //     if (task.state == "created"
         //         || (i > 0 && taskList[i-1].state == "created")

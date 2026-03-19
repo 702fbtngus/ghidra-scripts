@@ -2,7 +2,6 @@ package hw;
 
 import helper.DeviceManager;
 import helper.ByteUtil.DataSize;
-import helper.Logger;
 import hw.MmioDevice.Register.AccessType;
 
 public class PDCA extends MmioDevice {
@@ -29,9 +28,30 @@ public class PDCA extends MmioDevice {
     @Override
     public void link() {}
 
-    public void transferData(int mar, int psr, DataSize size) {
-        
-        Logger.printlnGlobal(String.format("[PDCA transferData] MAR = 0x%08X, PSR = 0x%08X", mar, psr), 2);
+    public void serviceChannel(PDCAChannel channel) {
+        if (isHandshakeDriven(channel.PSR.value)) {
+            if (isPeripheralReady(channel.PSR.value)) {
+                channel.tryTransferData();
+            }
+            return;
+        }
+        channel.tryTransferData();
+        // while (channel.tryTransferData()) {
+        //     // Non-handshake peripherals can continue draining immediately.
+        // }
+    }
+
+    public void requestTransfer(int psr) {
+        for (PDCAChannel channel : channels) {
+            if (channel.PSR.value != psr) {
+                continue;
+            }
+            channel.tryTransferData();
+        }
+    }
+
+    public boolean transferData(int mar, int psr, DataSize size) {
+        println(String.format("[PDCA transferData] MAR = 0x%08X, PSR = 0x%08X", mar, psr));
         boolean is_rx;
         if ((psr >= 0 && psr <= 12)
          || (psr >= 31 && psr <= 33)
@@ -83,11 +103,41 @@ public class PDCA extends MmioDevice {
                      : -1L;
         };
 
-        if (is_rx) {
-            deviceManager.loadFromMmioDeviceAddr(addr, mar, size);
-        } else {
-            deviceManager.storeToMmioDeviceAddr(addr, mar, size);
+        if (addr < 0) {
+            return false;
         }
 
+        if (is_rx) {
+            return deviceManager.loadFromMmioDeviceAddr(addr, mar, size) != null;
+        } else {
+            return deviceManager.storeToMmioDeviceAddr(addr, mar, size) != null;
+        }
+    }
+
+    private boolean isHandshakeDriven(int psr) {
+        return switch (psr) {
+            case 6, 7, 17, 18, 32, 35 -> true;
+            default -> false;
+        };
+    }
+
+    private boolean isPeripheralReady(int psr) {
+        return switch (psr) {
+            case 6 -> isTwimReady("TWIM0", true);
+            case 7 -> isTwimReady("TWIM1", true);
+            case 17 -> isTwimReady("TWIM0", false);
+            case 18 -> isTwimReady("TWIM1", false);
+            case 32 -> isTwimReady("TWIM2", true);
+            case 35 -> isTwimReady("TWIM2", false);
+            default -> false;
+        };
+    }
+
+    private boolean isTwimReady(String name, boolean rx) {
+        Device device = deviceManager.findDevice(name);
+        if (!(device instanceof TWIM twim)) {
+            return false;
+        }
+        return rx ? twim.isRxReady() : twim.isTxReady();
     }
 }
