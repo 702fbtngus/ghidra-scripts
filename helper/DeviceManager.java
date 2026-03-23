@@ -11,6 +11,7 @@ import hw.GPIO;
 import hw.HMATRIX;
 import hw.HMC5843;
 import hw.I2CDevice;
+import hw.I2CDevice.I2CEvent;
 import hw.INTC;
 import hw.MPU3300;
 import hw.MmioDevice;
@@ -210,5 +211,18 @@ public final class DeviceManager {
         }
         Logger.printlnGlobal(String.format("Received successfully: 0x%02X", Byte.toUnsignedInt(value)), 2);
         return value;
+    }
+
+    public void emitI2CEvent(int addr, I2CEvent event) {
+        I2CDevice device = findI2CDevice(addr);
+        if (device == null) {
+            return;
+        }
+        currentDeviceName = device.name;
+        Logger.printlnGlobal(
+            String.format("Emit I2C event %s for %s @ 0x%08X", event, device.name, addr),
+            2
+        );
+        device.onI2CEvent(event);
     }
 }

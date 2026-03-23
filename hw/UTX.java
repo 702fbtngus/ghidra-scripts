@@ -7,6 +7,7 @@ import java.util.Deque;
 import helper.DeviceManager;
 import helper.ByteUtil;
 import helper.ByteUtil.Endianness;
+import hw.I2CDevice.I2CEvent;
 
 public class UTX extends I2CDevice {
 
@@ -75,18 +76,48 @@ public class UTX extends I2CDevice {
 
     @Override
     public boolean tx(byte value) {
-        if (isActiveCommand(lastCmd) && isCommandByte(value)) {
-            finalizePendingPacket();
-            lastCmd = (byte) -1;
-        }
-
         if (lastCmd == (byte) -1) {
+            println("Received command byte: 0x" + String.format("%02X", value));
             return handleCommand(value);
         }
-
+        
+        println("Received payload byte: 0x" + String.format("%02X", value) + " for command 0x" + String.format("%02X", lastCmd));
         handlePayload(value);
         txLength++;
         return true;
+    }
+
+    @Override
+    public void onI2CEvent(I2CEvent event) {
+        switch (event) {
+            case START_SEND:
+                txLength = 0;
+                break;
+            case START_RECV:
+                break;
+            case FINISH:
+                if (lastCmd == (byte) -1) {
+                    return;
+                }
+
+                println("Completing transaction for command 0x" + String.format("%02X", lastCmd));
+                if (lastCmd == UTX_SEND_FRAME || lastCmd == UTX_SEND_FRAME_OVER) {
+                    finalizePendingPacket();
+                }
+
+                lastCmd = (byte) -1;
+                txLength = 0;
+                break;
+            case NACK:
+                lastCmd = (byte) -1;
+                txLength = 0;
+                pendingPacket = null;
+                pendingPacketLength = 0;
+                pendingPacketActive = false;
+                break;
+            default:
+                break;
+        }
     }
 
     private boolean handleCommand(byte command) {
@@ -99,6 +130,7 @@ public class UTX extends I2CDevice {
             case UTX_SEND_FRAME:
             case UTX_SEND_FRAME_OVER:
                 response = new byte[] { remainingCapacityByte() };
+                println("response.length: " + response.length);
                 beginPendingPacket();
                 return true;
             case UTX_SET_BEACON:
@@ -143,6 +175,7 @@ public class UTX extends I2CDevice {
 
     private void handlePayload(byte value) {
         int payloadIndex = txLength - 1;
+        println("handlePayload: value=0x" + String.format("%02X", value) + ", payloadIndex=" + payloadIndex);
 
         switch (lastCmd) {
             case UTX_SEND_FRAME:
@@ -214,15 +247,18 @@ public class UTX extends I2CDevice {
 
     private void appendPendingPacketByte(int packetIndex, byte value) {
         if (!pendingPacketActive || pendingPacket == null) {
+            println("Cannot append to pending packet: no active packet");
             return;
         }
         if (packetIndex < 0 || packetIndex >= UTX_MAX_PACKET_LENGTH) {
+            println("Invalid packet index: " + packetIndex);
             return;
         }
         pendingPacket[packetIndex] = value;
         if (packetIndex + 1 > pendingPacketLength) {
             pendingPacketLength = packetIndex + 1;
         }
+        println("pendingPacketLength: " + pendingPacketLength);
     }
 
     private void finalizePendingPacket() {
@@ -284,46 +320,6 @@ public class UTX extends I2CDevice {
         pendingPacket = null;
         pendingPacketLength = 0;
         pendingPacketActive = false;
-    }
-
-    private boolean isActiveCommand(byte command) {
-        switch (command) {
-            case UTX_SEND_FRAME:
-            case UTX_SEND_FRAME_OVER:
-            case UTX_SET_BEACON:
-            case UTX_SET_BEACON_OVER:
-            case UTX_SET_TO_CALLSIGN:
-            case UTX_SET_FROM_CALLSIGN:
-            case UTX_SET_IDLE:
-            case UTX_SET_BITRATE:
-                return true;
-            default:
-                return false;
-        }
-    }
-
-    private boolean isCommandByte(byte value) {
-        switch (value) {
-            case UTX_SEND_FRAME:
-            case UTX_SEND_FRAME_OVER:
-            case UTX_SET_BEACON:
-            case UTX_SET_BEACON_OVER:
-            case UTX_CLEAR_BEACON:
-            case UTX_SET_TO_CALLSIGN:
-            case UTX_SET_FROM_CALLSIGN:
-            case UTX_SET_IDLE:
-            case UTX_GET_TELEMETRIES:
-            case UTX_GET_STORED_TM:
-            case UTX_SET_BITRATE:
-            case UTX_GET_STATE:
-            case TRXUV_GET_UPTIME:
-            case TRXUV_RESET_SOFTWARE:
-            case TRXUV_RESET_HARDWARE:
-            case TRXUV_RESET_WATCHDOG:
-                return true;
-            default:
-                return false;
-        }
     }
 
     private byte remainingCapacityByte() {

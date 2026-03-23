@@ -1,6 +1,7 @@
 package hw;
 
 import helper.DeviceManager;
+import hw.I2CDevice.I2CEvent;
 import hw.MmioDevice.Register.AccessType;
 
 public class TWIM extends MmioDevice {
@@ -10,38 +11,38 @@ public class TWIM extends MmioDevice {
     Register IER, IDR, IMR;
     Register SCR, PR, VR;
 
-    static final int CR_MEN    = 1 << 0;
-    static final int CR_MDIS   = 1 << 1;
-    static final int CR_SMEN   = 1 << 4;
-    static final int CR_SMDIS  = 1 << 5;
-    static final int CR_SWRST  = 1 << 7;
-    static final int CR_STOP   = 1 << 8;
+    static final int CR_MEN = 1 << 0;
+    static final int CR_MDIS = 1 << 1;
+    static final int CR_SMEN = 1 << 4;
+    static final int CR_SMDIS = 1 << 5;
+    static final int CR_SWRST = 1 << 7;
+    static final int CR_STOP = 1 << 8;
 
-    static final int CMDR_READ        = 1 << 0;
-    static final int CMDR_SADR_MASK   = 0x3ff << 1;
-    static final int CMDR_TENBIT      = 1 << 11;
-    static final int CMDR_REPSAME     = 1 << 12;
-    static final int CMDR_START       = 1 << 13;
-    static final int CMDR_STOP        = 1 << 14;
-    static final int CMDR_VALID       = 1 << 15;
+    static final int CMDR_READ = 1 << 0;
+    static final int CMDR_SADR_MASK = 0x3ff << 1;
+    static final int CMDR_TENBIT = 1 << 11;
+    static final int CMDR_REPSAME = 1 << 12;
+    static final int CMDR_START = 1 << 13;
+    static final int CMDR_STOP = 1 << 14;
+    static final int CMDR_VALID = 1 << 15;
     static final int CMDR_NBYTES_MASK = 0xff << 16;
-    static final int CMDR_PECEN       = 1 << 24;
-    static final int CMDR_ACKLAST     = 1 << 25;
+    static final int CMDR_PECEN = 1 << 24;
+    static final int CMDR_ACKLAST = 1 << 25;
 
-    static final int SR_RXRDY    = 1 << 0;
-    static final int SR_TXRDY    = 1 << 1;
-    static final int SR_CRDY     = 1 << 2;
-    static final int SR_CCOMP    = 1 << 3;
-    static final int SR_IDLE     = 1 << 4;
-    static final int SR_BUSFREE  = 1 << 5;
-    static final int SR_ANAK     = 1 << 8;
-    static final int SR_DNAK     = 1 << 9;
-    static final int SR_ARBLST   = 1 << 10;
+    static final int SR_RXRDY = 1 << 0;
+    static final int SR_TXRDY = 1 << 1;
+    static final int SR_CRDY = 1 << 2;
+    static final int SR_CCOMP = 1 << 3;
+    static final int SR_IDLE = 1 << 4;
+    static final int SR_BUSFREE = 1 << 5;
+    static final int SR_ANAK = 1 << 8;
+    static final int SR_DNAK = 1 << 9;
+    static final int SR_ARBLST = 1 << 10;
     static final int SR_SMBALERT = 1 << 11;
-    static final int SR_TOUT     = 1 << 12;
-    static final int SR_PECERR   = 1 << 13;
-    static final int SR_STOP     = 1 << 14;
-    static final int SR_MENB     = 1 << 16;
+    static final int SR_TOUT = 1 << 12;
+    static final int SR_PECERR = 1 << 13;
+    static final int SR_STOP = 1 << 14;
+    static final int SR_MENB = 1 << 16;
 
     static final int SCR_MASK = SR_CCOMP | SR_ANAK | SR_DNAK | SR_ARBLST
             | SR_SMBALERT | SR_TOUT | SR_PECERR | SR_STOP;
@@ -63,20 +64,20 @@ public class TWIM extends MmioDevice {
     public TWIM(DeviceManager deviceManager, long baseAddr, String name, int group) {
         super(deviceManager, baseAddr, name, group);
 
-        CR    = newRegister(0x00, 0x00, AccessType.WRITE_ONLY);
-        CWGR  = newRegister(0x04, 0x00, AccessType.READ_WRITE);
+        CR = newRegister(0x00, 0x00, AccessType.WRITE_ONLY);
+        CWGR = newRegister(0x04, 0x00, AccessType.READ_WRITE);
         SMBTR = newRegister(0x08, 0x00, AccessType.READ_WRITE);
-        CMDR  = newRegister(0x0C, 0x00, AccessType.READ_WRITE);
+        CMDR = newRegister(0x0C, 0x00, AccessType.READ_WRITE);
         NCMDR = newRegister(0x10, 0x00, AccessType.READ_WRITE);
-        RHR   = newRegister(0x14, 0x00, AccessType.READ_ONLY);
-        THR   = newRegister(0x18, 0x00, AccessType.WRITE_ONLY);
-        SR    = newRegister(0x1c, SR_RESET_VALUE, AccessType.READ_ONLY);
-        IER   = newRegister(0x20, 0x00, AccessType.WRITE_ONLY);
-        IDR   = newRegister(0x24, 0x00, AccessType.WRITE_ONLY);
-        IMR   = newRegister(0x28, 0x00, AccessType.READ_ONLY);
-        SCR   = newRegister(0x2c, 0x00, AccessType.WRITE_ONLY);
-        PR    = newRegister(0x30, PR_RESET_VALUE, AccessType.READ_ONLY);
-        VR    = newRegister(0x34, VR_RESET_VALUE, AccessType.READ_ONLY);
+        RHR = newRegister(0x14, 0x00, AccessType.READ_ONLY);
+        THR = newRegister(0x18, 0x00, AccessType.WRITE_ONLY);
+        SR = newRegister(0x1c, SR_RESET_VALUE, AccessType.READ_ONLY);
+        IER = newRegister(0x20, 0x00, AccessType.WRITE_ONLY);
+        IDR = newRegister(0x24, 0x00, AccessType.WRITE_ONLY);
+        IMR = newRegister(0x28, 0x00, AccessType.READ_ONLY);
+        SCR = newRegister(0x2c, 0x00, AccessType.WRITE_ONLY);
+        PR = newRegister(0x30, PR_RESET_VALUE, AccessType.READ_ONLY);
+        VR = newRegister(0x34, VR_RESET_VALUE, AccessType.READ_ONLY);
 
         reset();
     }
@@ -87,9 +88,11 @@ public class TWIM extends MmioDevice {
         this.pdca = (PDCA) deviceManager.findDevice("PDCA");
     }
 
-    /* =========================
+    /*
+     * =========================
      * Register Write Handling
-     * ========================= */
+     * =========================
+     */
     @Override
     protected boolean onWrite(int ofs, int val) {
         if (!super.onWrite(ofs, val)) {
@@ -153,10 +156,6 @@ public class TWIM extends MmioDevice {
 
             case 0x24: // IDR
                 IMR.value &= ~val;
-                if ((val & SR_CRDY) == 0) {
-                    // If CRDY is disabled, also clear any pending command ready state in SR
-                    SR.value &= ~SR_CRDY;
-                }
                 evaluateInterrupt();
                 break;
 
@@ -172,9 +171,11 @@ public class TWIM extends MmioDevice {
         return true;
     }
 
-    /* =========================
+    /*
+     * =========================
      * Register Read Handling
-     * ========================= */
+     * =========================
+     */
     @Override
     protected Integer onRead(int ofs) {
         switch (ofs) {
@@ -198,9 +199,11 @@ public class TWIM extends MmioDevice {
         return super.onRead(ofs);
     }
 
-    /* =========================
+    /*
+     * =========================
      * Internal Logic
-     * ========================= */
+     * =========================
+     */
 
     private void reset() {
         masterEnabled = false;
@@ -217,7 +220,7 @@ public class TWIM extends MmioDevice {
         evaluateInterrupt();
     }
 
-private void requestStop() {
+    private void requestStop() {
         if (!commandActive) {
             return;
         }
@@ -226,6 +229,7 @@ private void requestStop() {
         commandActive = false;
         remainingBytes = 0;
         SR.value &= ~(SR_RXRDY | SR_TXRDY);
+        println("SR.TXRDY cleared (requestStop)");
         SR.value |= SR_IDLE | SR_BUSFREE | SR_CCOMP;
         SR.value |= SR_STOP;
         NCMDR.value &= ~CMDR_VALID;
@@ -252,13 +256,18 @@ private void requestStop() {
         busBusy = true;
         remainingBytes = getCommandByteCount(CMDR.value);
         SR.value &= ~(SR_IDLE | SR_BUSFREE | SR_CCOMP | SR_STOP | SR_RXRDY | SR_TXRDY);
-
+        println("SR.TXRDY cleared (tryStartPendingCommand)");
+        deviceManager.emitI2CEvent(
+            getSlaveAddress(),
+            isReadCommand(CMDR.value) ? I2CEvent.START_RECV : I2CEvent.START_SEND
+        );
 
         if (isReadCommand(CMDR.value)) {
             fillReceiveHoldingRegister();
             requestPdcaTransfer(getRxPdcaPsr());
         } else {
             SR.value |= SR_TXRDY;
+            println("SR.TXRDY set (tryStartPendingCommand)");
             // processTransmitByte();
             requestPdcaTransfer(getTxPdcaPsr());
         }
@@ -300,9 +309,13 @@ private void requestStop() {
         }
 
         remainingBytes--;
+        println("remainingBytes = " + remainingBytes);
+
         SR.value &= ~SR_TXRDY;
+        println("SR.TXRDY cleared (processTransmitByte)");
         if (remainingBytes > 0) {
             SR.value |= SR_TXRDY;
+            println("SR.TXRDY set (processTransmitByte)");
         } else {
             finishCurrentCommand(true);
         }
@@ -348,14 +361,17 @@ private void requestStop() {
     }
 
     private void finishCurrentCommand(boolean success) {
+        int slaveAddress = getSlaveAddress();
         commandActive = false;
         busBusy = false;
         remainingBytes = 0;
         SR.value &= ~(SR_RXRDY | SR_TXRDY);
+        println("SR.TXRDY cleared (finishCurrentCommand)");
         SR.value |= SR_IDLE | SR_BUSFREE;
 
         if (success) {
             SR.value |= SR_CCOMP;
+            deviceManager.emitI2CEvent(slaveAddress, I2CEvent.FINISH);
         }
 
         CMDR.value &= ~CMDR_VALID;
@@ -369,11 +385,14 @@ private void requestStop() {
     }
 
     private void failCurrentCommand(int errorBit) {
+        int slaveAddress = getSlaveAddress();
         commandActive = false;
         busBusy = false;
         remainingBytes = 0;
         SR.value &= ~(SR_RXRDY | SR_TXRDY | SR_CCOMP);
+        println("SR.TXRDY cleared (failCurrentCommand)");
         SR.value |= SR_IDLE | SR_BUSFREE | errorBit;
+        deviceManager.emitI2CEvent(slaveAddress, I2CEvent.NACK);
         updateState();
         evaluateInterrupt();
     }
@@ -381,11 +400,6 @@ private void requestStop() {
     private void updateState() {
         boolean currentReady = !commandActive || (CMDR.value & CMDR_VALID) == 0;
         boolean nextReady = (NCMDR.value & CMDR_VALID) == 0;
-        println("commandActive = " + commandActive);
-        println(String.format("CMDR = 0x%08X", CMDR.value));
-        println(String.format("CMDR.VALID = 0x%08X", CMDR.value & CMDR_VALID));
-        println(String.format("NCMDR = 0x%08X", NCMDR.value));
-        println(String.format("NCMDR.VALID = 0x%08X", NCMDR.value & CMDR_VALID));
         if (currentReady || nextReady) {
             SR.value |= SR_CRDY;
         } else {
@@ -468,5 +482,5 @@ private void requestStop() {
             intc.clearInterrupt(group, 0);
         }
     }
-    
+
 }

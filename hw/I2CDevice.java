@@ -4,6 +4,13 @@ import helper.DeviceManager;
 
 public abstract class I2CDevice extends Device {
 
+    public enum I2CEvent {
+        START_SEND,
+        START_RECV,
+        FINISH,
+        NACK
+    }
+
     // ------------------------------
     // 🔥 자동 등록되는 I2CDevice 전역 리스트
     // ------------------------------
@@ -24,4 +31,6 @@ public abstract class I2CDevice extends Device {
     public Byte rx() {
         return response[respIndex++];
     };
+
+    public void onI2CEvent(I2CEvent event) {}
 }
