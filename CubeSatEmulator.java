@@ -46,17 +46,17 @@ public class CubeSatEmulator extends GhidraScript {
     public final CPUState cpuState = new CPUState(programUtil, context, (s, i) -> println(s, i));
     public final PhaseManager phaseManager = new PhaseManager();
     public final TaskManager taskManager = new TaskManager(context, cpuState);
-    public final InterruptManager interruptManager = new InterruptManager(context, cpuState, taskManager);
+    public final InterruptManager interruptManager = new InterruptManager(context, cpuState, taskManager, phaseManager);
     public ExecuteManager executeManager;
     public Logger logger;
     public LogHelper logHelper;
     public boolean exitCondition() {
-        Phase phase = phaseManager.getCurrentPhase();
+        Phase phase = phaseManager.getTaskPhase(context.currentTaskName);
         return (
             // (currentPhase == 28)
             false
             || (context.instructionLimit >= 0 && phaseManager.getTotalInstructionCount() >= context.instructionLimit)
-            || (phase.getPhaseNumber() == 28 && phase.getPhaseInstructionCount() > 800000)
+            // || ("-28".equals(phase.getPhaseCode()) && phase.getPhaseInstructionCount() > 800000)
             // || context.currentThread.getCounter().getOffset() == 0x80017208L
             // || (currentPhase == 1)
         );
@@ -102,14 +102,15 @@ public class CubeSatEmulator extends GhidraScript {
             programUtil,
             () -> INTERESTING_ADDR,
             () -> DETAIL_FROM,
-            () -> DETAIL_UNTIL
+            () -> DETAIL_UNTIL,
+            () -> context.currentTaskName
         );
 
         logger = new Logger(
             getSourceFile().getParentFile().getAbsolutePath(),
             PW_FILENAMES,
             logHelper::printerMask,
-            () -> phaseManager.getCurrentPhase().toString(),
+            () -> phaseManager.formatLogPrefix(context.currentTaskName, context.interrupted),
             () -> context.currentTaskName,
             deviceManager::getCurrentDeviceName,
             () -> context.interrupted,
@@ -126,10 +127,10 @@ public class CubeSatEmulator extends GhidraScript {
             return cpuState.getRAMValue(0x13a0);
         };
         taskManager.getCurrentTick = getCurrentTick;
-        java.util.function.Supplier<String> getCurrentInstr = () -> {
-            return phaseManager.getCurrentPhase().toShortString();
+        java.util.function.Supplier<String> currentPrefixSupplier = () -> {
+            return phaseManager.formatTaskTablePrefix(context.currentTaskName, getCurrentTick.get());
         };
-        taskManager.getCurrentInstr = getCurrentInstr;
+        taskManager.currentPrefixSupplier = currentPrefixSupplier;
         taskManager.logger = logger;
 
         // Initialize DeviceManager
@@ -179,7 +180,7 @@ public class CubeSatEmulator extends GhidraScript {
 
         Field library = AbstractPcodeMachine.class.getDeclaredField("library");
         library.setAccessible(true);
-        library.set(inner, new UseropLibrary(context, cpuState, taskManager));
+        library.set(inner, new UseropLibrary(context, cpuState, taskManager, phaseManager));
 
         return pcemu;
     }
@@ -205,14 +206,22 @@ public class CubeSatEmulator extends GhidraScript {
         var thread = emu.newThread("main");
         context.currentThread = thread;
         thread.overrideCounter(toAddr(0x80000000));
-        phaseManager.startPhase(context.getCurrentFunctionName());
+        phaseManager.startPhase(context.currentTaskName, thread.getCounter().getOffset(), context.getCurrentFunctionName());
         cpuState.setVar("register", 0x0L, 0x610000);
 
         while (true) {
-            phaseManager.updatePhase(thread.getCounter().getOffset(), context.getCurrentFunctionName());
-            Phase phase = phaseManager.getCurrentPhase();
-            if (phase.getPhaseInstructionCount() % 10000 == 0) {
-                System.err.println(String.format("%s: PC = %s (%s %s)", phase, thread.getCounter(), context.interrupted, context.currentTaskName));
+            if (context.interrupted) {
+                phaseManager.updateInterruptPhase(thread.getCounter().getOffset(), context.getCurrentFunctionName());
+            } else {
+                phaseManager.updateTaskPhase(context.currentTaskName, thread.getCounter().getOffset(), context.getCurrentFunctionName());
+            }
+            // Phase phase = phaseManager.getTaskPhase(context.currentTaskName);
+            if (phaseManager.getTotalInstructionCount() % 10000 == 0) {
+                System.err.println(String.format(
+                    "%s totalInstructionCount = %s",
+                    phaseManager.formatLogPrefix(context.currentTaskName, context.interrupted),
+                    phaseManager.getTotalInstructionCount()
+                ));
             }
             // int sp = cpuState.getRegisterValue("SP");
             // logger.println("sp: " + ByteUtil.intToHex(sp), 1);
@@ -224,7 +233,7 @@ public class CubeSatEmulator extends GhidraScript {
             if (executeManager.executeInstr() == -1) {
                 return;
             }
-            phaseManager.incrementPhaseInstructionCount();
+            phaseManager.incrementInstructionCount(context.currentTaskName, context.interrupted);
             interruptManager.handleInterrupt();
             if (exitCondition()) {
                 tc0.exitClockThread();

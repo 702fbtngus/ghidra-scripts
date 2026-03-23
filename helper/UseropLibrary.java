@@ -9,11 +9,13 @@ public class UseropLibrary extends AnnotatedPcodeUseropLibrary<byte[]> {
     private final Context context;
     private final CPUState cpuState;
     private final TaskManager taskManager;
+    private final PhaseManager phaseManager;
 
-    public UseropLibrary(Context context, CPUState cpuState, TaskManager taskManager) {
+    public UseropLibrary(Context context, CPUState cpuState, TaskManager taskManager, PhaseManager phaseManager) {
         this.context = context;
         this.cpuState = cpuState;
         this.taskManager = taskManager;
+        this.phaseManager = phaseManager;
     }
 
     @PcodeUserop
@@ -77,6 +79,7 @@ public class UseropLibrary extends AnnotatedPcodeUseropLibrary<byte[]> {
         cpuState.setRegisterValue("SR", sr);
         cpuState.finishFrame();
         context.interrupted = false;
+        phaseManager.endInterrupt();
     }
 
     @PcodeUserop

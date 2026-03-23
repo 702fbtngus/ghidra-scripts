@@ -186,18 +186,15 @@ public final class ExecuteManager {
         return of1 == of2;
     }
 
-        public void adjustPhaseInstructionCount(Instruction instr, Address addr) {
+    public void adjustPhaseInstructionCount(Instruction instr, Address addr) {
         if (
-            (
-                instr.getMnemonicString().endsWith("SRF")
-                && !isFirstAddrInBlock(addr)
-                && !instr.getPrevious().getMnemonicString().equals("MFSR")
-                && !instr.getPrevious().getMnemonicString().equals("MTSR")
-                && !instr.getPrevious().getMnemonicString().equals("STDSP")
-            ) || context.interrupted
+            instr.getMnemonicString().endsWith("SRF")
+            && !isFirstAddrInBlock(addr)
+            && !instr.getPrevious().getMnemonicString().equals("MFSR")
+            && !instr.getPrevious().getMnemonicString().equals("MTSR")
+            && !instr.getPrevious().getMnemonicString().equals("STDSP")
         ) {
-            // println("adjusted", 1);
-            phaseManager.decrementPhaseInstructionCount();
+            phaseManager.decrementInstructionCount(context.currentTaskName);
         }
     }
 
@@ -316,7 +313,7 @@ public final class ExecuteManager {
 
         taskManager.monitorTasks(addr);
         
-        println("PC = " + thread.getCounter(), 1);
+        println("", 1);
 
         adjustPhaseInstructionCount(instr, addr);
 

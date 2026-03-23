@@ -7,12 +7,14 @@ public final class InterruptManager {
     private final Context context;
     private final CPUState cpuState;
     private final TaskManager taskManager;
+    private final PhaseManager phaseManager;
     public INTC intc;
 
-    public InterruptManager(Context context, CPUState cpuState, TaskManager taskManager) {
+    public InterruptManager(Context context, CPUState cpuState, TaskManager taskManager, PhaseManager phaseManager) {
         this.context = context;
         this.cpuState = cpuState;
         this.taskManager = taskManager;
+        this.phaseManager = phaseManager;
     }
 
 
@@ -32,6 +34,7 @@ public final class InterruptManager {
         // PC = EVBA + INTERRUPT_VECTOR_OFFSET;
         
         context.interrupted = true;
+        phaseManager.beginInterrupt(context.currentThread.getCounter().getOffset(), context.getCurrentFunctionName());
         Logger.printlnGlobal("interrupted", 1);
         int sp = cpuState.getRegisterValue("SP");
 

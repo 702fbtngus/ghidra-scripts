@@ -2,6 +2,7 @@ package helper;
 
 import java.util.function.IntSupplier;
 import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 
 import ghidra.pcode.emu.PcodeThread;
 import ghidra.pcode.exec.PcodeExecutorStatePiece.Reason;
@@ -20,6 +21,7 @@ public final class LogHelper {
     private final LongSupplier interestingAddrSupplier;
     private final IntSupplier detailFromSupplier;
     private final IntSupplier detailUntilSupplier;
+    private final Supplier<String> currentTaskNameSupplier;
 
     public LogHelper(
         CPUState cpuState,
@@ -27,7 +29,8 @@ public final class LogHelper {
         ProgramUtil programUtil,
         LongSupplier interestingAddrSupplier,
         IntSupplier detailFromSupplier,
-        IntSupplier detailUntilSupplier
+        IntSupplier detailUntilSupplier,
+        Supplier<String> currentTaskNameSupplier
     ) {
         this.cpuStateManager = cpuState;
         this.phaseManager = phaseManager;
@@ -35,6 +38,7 @@ public final class LogHelper {
         this.interestingAddrSupplier = interestingAddrSupplier;
         this.detailFromSupplier = detailFromSupplier;
         this.detailUntilSupplier = detailUntilSupplier;
+        this.currentTaskNameSupplier = currentTaskNameSupplier;
     }
 
     public void setLogger(Logger logger) {
@@ -42,14 +46,14 @@ public final class LogHelper {
     }
 
     public boolean isDetail(Address addr) {
-        Phase phase = phaseManager.getCurrentPhase();
+        Phase phase = phaseManager.getTaskPhase(currentTaskNameSupplier.get());
         return phase.getPhaseInstructionCount() > detailFromSupplier.getAsInt()
             && phase.getPhaseInstructionCount() < detailUntilSupplier.getAsInt();
     }
 
     public boolean printerMask(int i) {
-        Phase phase = phaseManager.getCurrentPhase();
-        return phase.getPhaseNumber() != 25 || i == 6 || i == 7;
+        Phase phase = phaseManager.getTaskPhase(currentTaskNameSupplier.get());
+        return !"-25".equals(phase.getPhaseCode()) || i == 6 || i == 7;
     }
 
     public void printPcodeOps(PcodeOp[] ops) {

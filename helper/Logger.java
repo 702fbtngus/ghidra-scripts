@@ -21,7 +21,7 @@ public class Logger {
     private final String basePath;
     private final String[] filenames;
     private final IntPredicate printerMask;
-    private final Supplier<String> phaseSupplier;
+    private final Supplier<String> prefixSupplier;
     private final Supplier<String> currentTaskNameSupplier;
     private final Supplier<String> currentDeviceNameSupplier;
     private final BooleanSupplier interruptedSupplier;
@@ -38,7 +38,7 @@ public class Logger {
         String basePath,
         String[] filenames,
         IntPredicate printerMask,
-        Supplier<String> phaseSupplier,
+        Supplier<String> prefixSupplier,
         Supplier<String> currentTaskNameSupplier,
         Supplier<String> currentDeviceNameSupplier,
         BooleanSupplier interruptedSupplier,
@@ -49,7 +49,7 @@ public class Logger {
         this.basePath = basePath;
         this.filenames = filenames;
         this.printerMask = printerMask;
-        this.phaseSupplier = phaseSupplier;
+        this.prefixSupplier = prefixSupplier;
         this.currentTaskNameSupplier = currentTaskNameSupplier;
         this.currentDeviceNameSupplier = currentDeviceNameSupplier;
         this.interruptedSupplier = interruptedSupplier;
@@ -118,10 +118,14 @@ public class Logger {
     }
 
     public void println(String s, int i) {
-        String s1 = String.format("%s (%s)", s, phaseSupplier.get());
         if (i == 7) {
             printInner(s, i);
-        } else if (i != 0) {
+            printInner(s, 0);
+            return;
+        }
+
+        String s1 = String.format("%s %s", prefixSupplier.get(), s);
+        if (i != 0) {
             printInner(s1, i);
         }
         printInner(s1, 0);

@@ -2,6 +2,7 @@ package helper;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -9,6 +10,7 @@ import java.net.SocketTimeoutException;
 import java.util.Arrays;
 
 import hw.Device;
+import hw.UTX;
 import hw.VRX;
 
 public class RFModuleSimulator {
@@ -50,6 +52,7 @@ public class RFModuleSimulator {
                 }
 
                 int size = recvMessage();
+                sendMessage();
                 if (size == 0) {
                     sleepQuietly(IDLE_SLEEP_MS);
                 }
@@ -131,6 +134,41 @@ public class RFModuleSimulator {
             return vrx;
         }
         return null;
+    }
+
+    private UTX lookupUtx() {
+        Device device = deviceManager.findDevice("UTX");
+        if (device instanceof UTX utx) {
+            return utx;
+        }
+        return null;
+    }
+
+    private void sendMessage() {
+        if (clientSocket == null || clientSocket.isClosed()) {
+            return;
+        }
+
+        UTX utx = lookupUtx();
+        if (utx == null) {
+            return;
+        }
+
+        byte[] packet = utx.dequeueOutgoingRadioPacket();
+        if (packet == null || packet.length == 0) {
+            return;
+        }
+
+        Logger.printlnGlobal("[rf_module_simulator_thread] Trying to transmit recorded packet via TCP...");
+        try {
+            OutputStream output = clientSocket.getOutputStream();
+            output.write(packet);
+            output.flush();
+            Logger.printlnGlobal(String.format("[rf_module_simulator_thread] Transmitted %d bytes of data", packet.length));
+        } catch (IOException e) {
+            Logger.printlnGlobal("[rf_module_simulator_thread] Transmission FAILED! " + e.getMessage());
+            closeClient();
+        }
     }
 
     private void closeClient() {

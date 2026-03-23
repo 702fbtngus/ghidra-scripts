@@ -16,7 +16,7 @@ public class TaskManager {
     private final int CHUNK_LENGTH = 35;
     private final String GROUP_GAP = "    ";
     public Supplier<Integer> getCurrentTick;
-    public Supplier<String> getCurrentInstr;
+    public Supplier<String> currentPrefixSupplier;
     public int currentLine = 1;
 
     static class Task {
@@ -257,8 +257,9 @@ public class TaskManager {
         String line = groups.stream()
             .map(this::buildHeaderGroup)
             .collect(Collectors.joining(GROUP_GAP));
+        int prefixWidth = currentPrefixSupplier.get().length();
         Logger.printlnGlobal("", 7);
-        Logger.printlnGlobal(String.format("%26s    %s", "", line), 7);
+        Logger.printlnGlobal(String.format("%" + prefixWidth + "s    %s", "", line), 7);
         currentLine = 0;
     }
 
@@ -282,7 +283,7 @@ public class TaskManager {
         String line = groups.stream()
             .map(this::buildStateGroup)
             .collect(Collectors.joining(GROUP_GAP));
-        line = String.format("[ %-12s | %-7x ]    %s", getCurrentInstr.get(), getCurrentTick.get(), line);
+        line = String.format("%s    %s", currentPrefixSupplier.get(), line);
         //     Task task = taskList[i];
         //     if (task.state == "created"
         //         || (i > 0 && taskList[i-1].state == "created")
