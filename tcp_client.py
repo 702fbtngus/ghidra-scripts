@@ -11,6 +11,7 @@ PORT = 10001
 
 # 전송할 HEX 문자열
 hex_str = [
+    "00 00 00 00 29 40 00",       # vrx_get_uptime()
     "00 00 00 00 29 1A 00",       # vrx_get_telemetries()
 
     # "00 00 00 00 46 12 00",       # hstx_get_status_register()

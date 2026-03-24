@@ -29,7 +29,8 @@ parser_compare.add_argument("right")
 
 # import mode
 parser_list = subparsers.add_parser("import")
-parser_list.add_argument("file")
+parser_list.add_argument("--fast", action="store_true")
+# parser_list.add_argument("file")
 
 # manual run mode
 parser_run = subparsers.add_parser("run")
@@ -115,9 +116,9 @@ def resolve_compare_target(value):
     return restore_version(version, strict=False)
 
 if args.mode == "list":
-    execute_script("ProjectManager.java", ["list"])
+    execute_script("helper/ProjectManager.java", ["list"])
 elif args.mode == "del":
-    execute_script("ProjectManager.java", ["delete", args.file])
+    execute_script("helper/ProjectManager.java", ["delete", args.file])
 elif args.mode == "emul":
     file = "nanomind-bsp-fast.elf" if args.fast else "nanomind-bsp-new.elf"
     emul_args = []
@@ -156,8 +157,12 @@ elif args.mode == "compare":
     ]
     subprocess.run(runargs)
 elif args.mode == "import":
-    file = "/home/fbtngus/ghidra-randev/build/dist/" + args.file
-    execute_script(_import=file)
+    file = "nanomind-bsp-fast.elf" if args.fast else "nanomind-bsp-new.elf"
+    filepath = "/home/fbtngus/ghidra-randev/build/dist/" + file
+    execute_script("helper/ProjectManager.java", ["delete", file])
+    execute_script(_import=filepath)
+    execute_script("helper/PopulateDataLMA.java", process=file)
+    execute_script("helper/ManualDisassemble.java", process=file)
 elif args.mode == "run":
     file = "nanomind-bsp-fast.elf" if args.fast else "nanomind-bsp-new.elf"
     execute_script(args.script, process=file)

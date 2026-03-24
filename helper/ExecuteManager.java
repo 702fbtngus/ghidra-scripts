@@ -203,14 +203,14 @@ public final class ExecuteManager {
         Address addr = thread.getCounter();
         
         switch ((int) addr.getOffset()) {
-            case 0x8003bb88:
+            case 0x8003bb80:
                 // Entered _vfprintf_r
                 println("_vfprintf_r called");
                 cpuState.setCounter(cpuState.getRegisterValue("LR"));
                 context.currentFrame.finishAsBranch();
                 break;
 
-            case 0x80029ab0:
+            case 0x80029aa8:
                 // Entered gs_i2c_master_transaction
                 println("gs_i2c_master_transaction called", 2);
                 int tx = cpuState.getRegisterValue("R10");
@@ -219,7 +219,7 @@ public final class ExecuteManager {
                 println(String.format("*tx: 0x%X", cpuState.getRAMValue(tx)), 2);
                 println(String.format("txlen: %d", txlen), 2);
                 break;
-            case 0x80029ae0: {
+            case 0x80029ad8: {
                 // Exiting gs_i2c_master_transaction
                 println("gs_i2c_master_transaction exiting", 2);
                 int res = cpuState.getRegisterValue("R12");
@@ -227,7 +227,7 @@ public final class ExecuteManager {
                 break;
             }
                 
-            case 0x8002dd1e: {
+            case 0x8002dd16: {
                 // Exiting twim_pdc_transfer
                 println("twim_pdc_transfer exiting", 2);
                 int res = cpuState.getRegisterValue("R12");
@@ -235,7 +235,7 @@ public final class ExecuteManager {
                 break;
             }
                 
-            case 0x8002f92c: {
+            case 0x8002f926: {
                 // Entered xTaskIncrementTick
                 println("xTaskIncrementTick called", 2);
                 int xTickCount = cpuState.getRegisterValue("R4");
@@ -269,28 +269,55 @@ public final class ExecuteManager {
                 break;
             }
         
-            case 0x8002f44e: {
-                // timeout occurred
-                int numOfOverflows = cpuState.getRegisterValue("R12");
-                int overflowCount = cpuState.getRegisterValue("R11");
-                println("numOfOverflows = 0x" + Integer.toHexString(numOfOverflows), 1);
-                println("overflowCount = 0x" + Integer.toHexString(overflowCount), 1);
+            // case 0x8002f44e: {
+            //     // timeout occurred
+            //     int numOfOverflows = cpuState.getRegisterValue("R12");
+            //     int overflowCount = cpuState.getRegisterValue("R11");
+            //     println("numOfOverflows = 0x" + Integer.toHexString(numOfOverflows), 1);
+            //     println("overflowCount = 0x" + Integer.toHexString(overflowCount), 1);
+            //     break;
+            // }
+            // case 0x8002f456: {
+            //     // timeout occurred
+            //     int xTickCount = cpuState.getRegisterValue("R10");
+            //     int xTimeonEntering = cpuState.getRegisterValue("R9");
+            //     int r8 = cpuState.getRegisterValue("R8");
+            //     println("xTickCount = 0x" + Integer.toHexString(xTickCount), 1);
+            //     println("xTimeonEntering = 0x" + Integer.toHexString(xTimeonEntering), 1);
+            //     println("r8 = 0x" + Integer.toHexString(r8), 1);
+            //     break;
+            // }
+            // case 0x8002f474: {
+            //     // timeout occurred
+            //     int r9 = cpuState.getRegisterValue("R9");
+            //     println("xTickCount - pxTimeOut->xTimeOnEntering = 0x" + Integer.toHexString(r9), 1);
+            //     break;
+            // }
+            case 0x8001d2d4: {
+                // memset after vrx_get_uptime
+                int r12 = cpuState.getRegisterValue("R12");
+                int r11 = cpuState.getRegisterValue("R11");
+                int r10 = cpuState.getRegisterValue("R10");
+                println("cmd_result[2] = 0x" + Integer.toHexString(r12), 1);
+                println("uptime_data = 0x" + Integer.toHexString(r11), 1);
+                println("sizeof(uptime_data) = 0x" + Integer.toHexString(r10), 1);
                 break;
             }
-            case 0x8002f456: {
-                // timeout occurred
-                int xTickCount = cpuState.getRegisterValue("R10");
-                int xTimeonEntering = cpuState.getRegisterValue("R9");
-                int r8 = cpuState.getRegisterValue("R8");
-                println("xTickCount = 0x" + Integer.toHexString(xTickCount), 1);
-                println("xTimeonEntering = 0x" + Integer.toHexString(xTimeonEntering), 1);
-                println("r8 = 0x" + Integer.toHexString(r8), 1);
+            case 0x8001d2d8: {
+                // memset finished
+                println("*cmd_result = 0x" + Integer.toHexString(cpuState.getRAMValue(0x9eb0)), 1);
+                println("*cmd_result + 4 = 0x" + Integer.toHexString(cpuState.getRAMValue(0x9eb4)), 1);
                 break;
             }
-            case 0x8002f474: {
-                // timeout occurred
-                int r9 = cpuState.getRegisterValue("R9");
-                println("xTickCount - pxTimeOut->xTimeOnEntering = 0x" + Integer.toHexString(r9), 1);
+            case 0x800171d6: {
+                // utx_send_frame
+                int r12 = cpuState.getRegisterValue("R12");
+                int r11 = cpuState.getRegisterValue("R11");
+                // cmd_result, sizeof(cmd_result)
+                println("cmd_result = 0x" + Integer.toHexString(r12), 1);
+                println("sizeof(cmd_result) = 0x" + Integer.toHexString(r11), 1);
+                println("*cmd_result = 0x" + Integer.toHexString(cpuState.getRAMValue(r12)), 1);
+                println("*cmd_result + 4 = 0x" + Integer.toHexString(cpuState.getRAMValue(r12 + 4)), 1);
                 break;
             }
                 

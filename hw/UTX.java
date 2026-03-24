@@ -66,7 +66,7 @@ public class UTX extends I2CDevice {
     public void link() {}
 
     public byte[] dequeueOutgoingRadioPacket() {
-        finalizePendingPacket();
+        waitUntilFinalizePendingPacket();
         byte[] packet = packetQueue.pollFirst();
         if (packet == null) {
             return null;
@@ -130,7 +130,6 @@ public class UTX extends I2CDevice {
             case UTX_SEND_FRAME:
             case UTX_SEND_FRAME_OVER:
                 response = new byte[] { remainingCapacityByte() };
-                println("response.length: " + response.length);
                 beginPendingPacket();
                 return true;
             case UTX_SET_BEACON:
@@ -271,6 +270,17 @@ public class UTX extends I2CDevice {
         pendingPacket = null;
         pendingPacketLength = 0;
         pendingPacketActive = false;
+    }
+
+    private void waitUntilFinalizePendingPacket() {
+        while (pendingPacketActive) {
+            try {
+                Thread.sleep(1);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
     }
 
     private void writeBeaconRepeatIntervalByte(int offset, byte value) {
