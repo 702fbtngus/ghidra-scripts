@@ -198,7 +198,10 @@ public final class ExecuteManager {
         }
     }
 
-    public void beforeInstr() throws AddressFormatException {
+    public boolean beforeInstr() throws AddressFormatException {
+        boolean branchHandledManually = false;
+
+        // Firmware dependent hooks
         PcodeThread<byte[]> thread = context.currentThread;
         Address addr = thread.getCounter();
         
@@ -208,6 +211,7 @@ public final class ExecuteManager {
                 println("_vfprintf_r called");
                 cpuState.setCounter(cpuState.getRegisterValue("LR"));
                 context.currentFrame.finishAsBranch();
+                branchHandledManually = true;
                 break;
 
             case 0x80029aa8:
@@ -324,6 +328,8 @@ public final class ExecuteManager {
                 default:
                 break;
         }
+
+        return branchHandledManually;
     }
 
     public int executeInstr() throws AddressFormatException {

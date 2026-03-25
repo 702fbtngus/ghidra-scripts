@@ -5,6 +5,7 @@
 //@menupath 
 //@toolbar 
 //@runtime Java
+package stock;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -24,7 +25,18 @@ import ghidra.program.model.symbol.FlowType;
 public class CollectBranches extends GhidraScript {
     @Override
     public void run() throws Exception {
-        File outFile = new File("/Users/suhyeonryu/CubeSatPcode/ghidra_scripts/branches.txt");
+        File outFile = new File("log/branches.log");  // relative path
+
+        // 디렉터리 없으면 생성
+        outFile.getParentFile().mkdirs();
+
+        // 파일 생성
+        if (outFile.createNewFile()) {
+            System.out.println("파일 생성됨");
+        } else {
+            System.out.println("이미 존재");
+        }
+
         try (PrintWriter pw = new PrintWriter(new FileWriter(outFile))) {
             // BasicBlockModel bbm = new BasicBlockModel(currentProgram);
             SimpleBlockModel bbm = new SimpleBlockModel(currentProgram);
