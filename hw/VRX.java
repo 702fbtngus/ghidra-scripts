@@ -59,20 +59,25 @@ public class VRX extends I2CDevice {
 
         switch (value) {
             case VRX_GET_FRAMES:
+                println("VRX: Get Frames, queue size=" + packetQueue.size());
                 response = ByteUtil.intToByteArray(packetQueue.size(), 2, Endianness.LITTLE_ENDIAN);
                 return true;
             case VRX_GET_FRAME:
+                println("VRX: Get Frame, queue size=" + packetQueue.size());
                 response = buildFrameResponse();
                 return true;
             case VRX_REMOVE_FRAME:
+                println("VRX: Remove Frame, queue size=" + packetQueue.size());
                 if (!packetQueue.isEmpty()) {
                     packetQueue.removeFirst();
                 }
                 return true;
             case VRX_GET_TELEMETRIES:
+                println("VRX: Get Telemetries, queue size=" + packetQueue.size());
                 response = buildTelemetryResponse();
                 return true;
             case TRXUV_GET_UPTIME:
+                println("VRX: Get Uptime, queue size=" + packetQueue.size());
                 response = ByteUtil.intToByteArray(TRXUV_UPTIME, 4, Endianness.LITTLE_ENDIAN);
                 return true;
             case TRXUV_RESET_SOFTWARE:

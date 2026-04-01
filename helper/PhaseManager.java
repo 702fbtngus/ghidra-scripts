@@ -258,7 +258,8 @@ public final class PhaseManager {
         configs.put("randev_sys_init", new TaskPhaseConfig(null, SYS_INIT_PHASE_BOUNDARIES, "rand"));
         configs.put("mode_manager", new TaskPhaseConfig(0x8001b89aL, MODE_PHASE_BOUNDARIES, "mode"));
         configs.put("downlink_manage", new TaskPhaseConfig(0x8001b87aL, DOWNLINK_PHASE_BOUNDARIES, "down"));
-        configs.put("uplink_manager", new TaskPhaseConfig(0x8001b85aL, UPLINK_PHASE_BOUNDARIES, "upli"));
+        // configs.put("uplink_manager", new TaskPhaseConfig(0x8001b85aL, UPLINK_PHASE_BOUNDARIES, "upli"));
+        configs.put("uplink_manager", new TaskPhaseConfig(0x80017198L, UPLINK_PHASE_BOUNDARIES, "upli"));
         configs.put("data_manager", new TaskPhaseConfig(null, DATA_PHASE_BOUNDARIES, "data"));
         configs.put("CONSOLE", new TaskPhaseConfig(null, CONSOLE_PHASE_BOUNDARIES, "CONS"));
         configs.put("RTE", new TaskPhaseConfig(null, RTE_PHASE_BOUNDARIES, "RTE"));

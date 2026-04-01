@@ -9,8 +9,21 @@ import os
 HOST = '127.0.0.1'
 PORT = 10001
 
+
+
 # 전송할 HEX 문자열
 hex_str = [
+    "00 00 00 00 28 41 00",       # utx_get_state()
+    "00 00 00 00 28 25 00",       # utx_get_telemetries()
+    "00 00 00 00 28 10 05 1C ED C0 FF EE",       # utx_send_frame()
+    "00 00 00 00 28 26 00",       # utx_get_stored_tm()
+    "00 00 00 00 28 24 01 08",       # utx_set_idle()
+    "00 00 00 00 28 28 01 08",       # utx_set_bitrate()
+
+    "00 00 00 00 29 21 00",       # vrx_get_frames()
+    "00 00 00 00 29 22 00",       # vrx_get_frame()
+    "00 00 00 00 29 24 00",       # vrx_remove_frame()
+    "00 00 00 00 29 1A 00",       # vrx_get_telemetries()
     "00 00 00 00 29 40 00",       # vrx_get_uptime()
     "00 00 00 00 29 1A 00",       # vrx_get_telemetries()
 
@@ -86,7 +99,7 @@ def main():
                 payload = unhexlify(hex)
                 s.sendall(payload)
                 print(f"Sent({len(payload)}): {hex}")
-                time.sleep(1)
+                time.sleep(0.1)
 
             while not disconnected.is_set():
                 time.sleep(0.1)  # 수신 스레드가 종료될 때까지 대기

@@ -87,6 +87,16 @@ public final class ByteUtil {
         return byteArrayToInt(bytes, Endianness.BIG_ENDIAN);
     }
 
+    public static String byteArrayToHexString(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("[ ");
+        for (byte b : bytes) {
+            sb.append(String.format("%02X ", b));
+        }
+        sb.append("]");
+        return sb.toString();
+    }
+
     public static int byteArrayToInt(byte[] bytes, Endianness endianness) {
         int result = 0;
         switch (endianness) {

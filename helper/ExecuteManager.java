@@ -206,15 +206,14 @@ public final class ExecuteManager {
         Address addr = thread.getCounter();
         
         switch ((int) addr.getOffset()) {
-            case 0x8003bb80:
+            case 0x8003bb88:
                 // Entered _vfprintf_r
                 println("_vfprintf_r called");
                 cpuState.setCounter(cpuState.getRegisterValue("LR"));
                 context.currentFrame.finishAsBranch();
-                branchHandledManually = true;
                 break;
 
-            case 0x80029aa8:
+            case 0x80029ab0:
                 // Entered gs_i2c_master_transaction
                 println("gs_i2c_master_transaction called", 2);
                 int tx = cpuState.getRegisterValue("R10");
@@ -223,7 +222,7 @@ public final class ExecuteManager {
                 println(String.format("*tx: 0x%X", cpuState.getRAMValue(tx)), 2);
                 println(String.format("txlen: %d", txlen), 2);
                 break;
-            case 0x80029ad8: {
+            case 0x80029ae0: {
                 // Exiting gs_i2c_master_transaction
                 println("gs_i2c_master_transaction exiting", 2);
                 int res = cpuState.getRegisterValue("R12");
@@ -231,7 +230,7 @@ public final class ExecuteManager {
                 break;
             }
                 
-            case 0x8002dd16: {
+            case 0x8002dd1e: {
                 // Exiting twim_pdc_transfer
                 println("twim_pdc_transfer exiting", 2);
                 int res = cpuState.getRegisterValue("R12");
@@ -239,7 +238,7 @@ public final class ExecuteManager {
                 break;
             }
                 
-            case 0x8002f926: {
+            case 0x8002f92c: {
                 // Entered xTaskIncrementTick
                 println("xTaskIncrementTick called", 2);
                 int xTickCount = cpuState.getRegisterValue("R4");
@@ -258,6 +257,14 @@ public final class ExecuteManager {
                 break;
             }
         
+            case 0x8001d0e0: {
+                // memcpy before
+                int r11 = cpuState.getRegisterValue("R11");
+                println("r11 = 0x" + Integer.toHexString(r11), 1);
+                println(String.format("res: %s", cpuState.getRAMValues(r11, 10)), 2);
+                break;
+            }
+
             case 0x8001d0e4: {
                 // vrx_get_frame done
                 int r7 = cpuState.getRegisterValue("R7");
@@ -265,11 +272,7 @@ public final class ExecuteManager {
                 println(String.format("rx_length: 0x%X", cpuState.getRAMValue(r7, 2)), 1);
                 println(String.format("doppler_freq: 0x%X", cpuState.getRAMValue(r7 + 2, 2)), 1);
                 println(String.format("sig_strength: 0x%X", cpuState.getRAMValue(r7 + 4, 2)), 1);
-                String rx_content = "";
-                for (int i = 0; i < 0xc8; i++) {
-                    rx_content += String.format("%X ", cpuState.getRAMValue(r7 + 6 + i, 1));
-                }
-                println(String.format("rx_content: %s", rx_content), 2);
+                println(String.format("rx_content: %s", cpuState.getRAMValues(r7 + 6, 10)), 2);
                 break;
             }
         
@@ -322,6 +325,15 @@ public final class ExecuteManager {
                 println("sizeof(cmd_result) = 0x" + Integer.toHexString(r11), 1);
                 println("*cmd_result = 0x" + Integer.toHexString(cpuState.getRAMValue(r12)), 1);
                 println("*cmd_result + 4 = 0x" + Integer.toHexString(cpuState.getRAMValue(r12 + 4)), 1);
+                break;
+            }
+            case 0x800171a8: {
+                // after memset
+                int sp = cpuState.getRegisterValue("SP");
+                println("*SP[0x1f2] = 0x" + Integer.toHexString(cpuState.getRAMValue(sp + 0x1f2)), 1);
+                println("*SP[0x1f3] = 0x" + Integer.toHexString(cpuState.getRAMValue(sp + 0x1f3)), 1);
+                println("*SP[0x1f4] = 0x" + Integer.toHexString(cpuState.getRAMValue(sp + 0x1f4)), 1);
+                println("*SP[0x1f5] = 0x" + Integer.toHexString(cpuState.getRAMValue(sp + 0x1f5)), 1);
                 break;
             }
                 

@@ -140,6 +140,11 @@ public final class CPUState {
         return getVar("RAM", offset, numbytes);
     }
 
+    public String getRAMValues(int offset, int numbytes) {
+        var regAddrSpace = programUtil.getAddressSpace("RAM");
+        return ByteUtil.byteArrayToHexString(getState().getVar(regAddrSpace, offset, numbytes, true, Reason.INSPECT));
+    }
+
     public String readString(int offset) {
         StringBuilder s = new StringBuilder();
         while (true) {
