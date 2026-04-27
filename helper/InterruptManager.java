@@ -35,7 +35,7 @@ public final class InterruptManager {
         
         context.interrupted = true;
         phaseManager.beginInterrupt(context.currentThread.getCounter().getOffset(), context.getCurrentFunctionName());
-        Logger.printlnGlobal("interrupted", 1);
+        Logger.printlnGlobal("interrupted", -1);
         int sp = cpuState.getRegisterValue("SP");
 
         sp -= 4;

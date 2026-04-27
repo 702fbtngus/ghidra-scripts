@@ -11,6 +11,7 @@ public final class Context {
     public SystemRegister systemRegister = new SystemRegister();
     public String currentFunctionName = "";
     public int instructionLimit = -1;
+    public int interruptInstructionLimit = 100000;
     public boolean toMain = false;
     public PcodeThread<byte[]> currentThread;
     public Program currentProgram;

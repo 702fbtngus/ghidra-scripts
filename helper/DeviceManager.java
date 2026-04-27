@@ -2,6 +2,7 @@ package helper;
 
 import ghidra.program.model.pcode.Varnode;
 import helper.ByteUtil.DataSize;
+import hw.ADCS;
 import hw.ADCIFA;
 import hw.CANIF;
 import hw.Device;
@@ -10,6 +11,7 @@ import hw.FLASHC;
 import hw.GPIO;
 import hw.HMATRIX;
 import hw.HMC5843;
+import hw.HSTX;
 import hw.I2CDevice;
 import hw.I2CDevice.I2CEvent;
 import hw.INTC;
@@ -23,6 +25,7 @@ import hw.SPI;
 import hw.TC;
 import hw.TWIM;
 import hw.TWIS;
+import hw.UVANT;
 import hw.USART;
 import hw.UTX;
 import hw.VRX;
@@ -73,9 +76,13 @@ public final class DeviceManager {
         // I2C devicesthis
         // new MPU3300 ( this, "MPU3300", 0x68 );
         // new HMC5843 ( this, "HMC5843", 0x1E );
-        // new EPS     ( this, "EPS", 0x2B );
+        new EPS     ( this, "EPS", 0x2B );
         new UTX     ( this, "UTX", 0x61 );
         new VRX     ( this, "VRX", 0x60 );
+        new HSTX    ( this, "HSTX", 0x26 );
+        new ADCS    ( this, "ADCS", 0x57 );
+        new UVANT   ( this, "UVANTA", 0x31 );
+        new UVANT   ( this, "UVANTB", 0x32 );
     }
 
     public void register(Device device) {
@@ -189,7 +196,8 @@ public final class DeviceManager {
         }
         currentDeviceName = device.name;
         Logger.printlnGlobal(String.format("Send to I2CDevice %s @ 0x%08X: 0x%02X", device.name, addr, Byte.toUnsignedInt(value)), 2);
-        if (("VRX".equals(device.name) || "UTX".equals(device.name)) && !device.tx(value)) {
+        // if (("VRX".equals(device.name) || "UTX".equals(device.name)) && !device.tx(value)) {
+        if (!device.tx(value)) {
             Logger.printlnGlobal(device.getClass().getSimpleName() + ": invalid tx value =0x" + Integer.toHexString(value));
             return null;
         }
@@ -205,7 +213,8 @@ public final class DeviceManager {
         currentDeviceName = device.name;
         Logger.printlnGlobal(String.format("Recv from I2CDevice %s @ 0x%08X", device.name, addr), 2);
         Byte value = device.rx();
-        if (("VRX".equals(device.name) || "UTX".equals(device.name)) && value == null) {
+        // if (("VRX".equals(device.name) || "UTX".equals(device.name)) && value == null) {
+        if (value == null) {
             Logger.printlnGlobal(device.getClass().getSimpleName() + ": invalid rx");
             return null;
         }

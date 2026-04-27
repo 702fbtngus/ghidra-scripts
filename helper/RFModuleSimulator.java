@@ -17,6 +17,7 @@ public class RFModuleSimulator {
 
     private static final int SERVER_PORT = 10001;
     private static final int BUFFER_SIZE = 0x400;
+    private static final int MAX_PENDING_BYTES = BUFFER_SIZE * 4;
     private static final int ACCEPT_TIMEOUT_MS = 200;
     private static final int READ_TIMEOUT_MS = 50;
     private static final int IDLE_SLEEP_MS = 10;
@@ -28,6 +29,8 @@ public class RFModuleSimulator {
 
     private ServerSocket serverSocket;
     private Socket clientSocket;
+    private final byte[] pendingIncoming = new byte[MAX_PENDING_BYTES];
+    private int pendingIncomingLength = 0;
 
     public RFModuleSimulator(DeviceManager deviceManager) {
         this.deviceManager = deviceManager;
@@ -114,10 +117,7 @@ public class RFModuleSimulator {
             }
 
             Logger.printlnGlobal(String.format("[rf_module_simulator_thread] Received %d bytes of data", size));
-            VRX vrx = lookupVrx();
-            if (vrx != null) {
-                vrx.enqueueRadioPacket(Arrays.copyOf(incomingMessage, size));
-            }
+            enqueueIncomingPackets(Arrays.copyOf(incomingMessage, size));
             return size;
         } catch (SocketTimeoutException e) {
             return 0;
@@ -126,6 +126,65 @@ public class RFModuleSimulator {
             closeClient();
             return -1;
         }
+    }
+
+    private void enqueueIncomingPackets(byte[] chunk) {
+        if (chunk.length == 0) {
+            return;
+        }
+
+        if (pendingIncomingLength + chunk.length > pendingIncoming.length) {
+            Logger.printlnGlobal("[rf_module_simulator_thread] Pending RX buffer overflow; dropping buffered data");
+            pendingIncomingLength = 0;
+        }
+
+        System.arraycopy(chunk, 0, pendingIncoming, pendingIncomingLength, chunk.length);
+        pendingIncomingLength += chunk.length;
+
+        VRX vrx = lookupVrx();
+        if (vrx == null) {
+            pendingIncomingLength = 0;
+            return;
+        }
+
+        int offset = 0;
+        while (pendingIncomingLength - offset >= 7) {
+            if (!looksLikeCommandHeader(offset)) {
+                Logger.printlnGlobal(String.format(
+                    "[rf_module_simulator_thread] RX desync at offset %d (0x%02X); resyncing",
+                    offset,
+                    Byte.toUnsignedInt(pendingIncoming[offset])
+                ));
+                offset++;
+                continue;
+            }
+
+            int payloadLength = Byte.toUnsignedInt(pendingIncoming[offset + 6]);
+            int packetLength = 7 + payloadLength;
+            if (pendingIncomingLength - offset < packetLength) {
+                break;
+            }
+
+            vrx.enqueueRadioPacket(Arrays.copyOfRange(pendingIncoming, offset, offset + packetLength));
+            Logger.printlnGlobal(String.format(
+                "[rf_module_simulator_thread] Enqueued RF packet (%d bytes, payload=%d)",
+                packetLength,
+                payloadLength
+            ));
+            offset += packetLength;
+        }
+
+        if (offset > 0) {
+            System.arraycopy(pendingIncoming, offset, pendingIncoming, 0, pendingIncomingLength - offset);
+            pendingIncomingLength -= offset;
+        }
+    }
+
+    private boolean looksLikeCommandHeader(int offset) {
+        return pendingIncoming[offset] == 0
+            && pendingIncoming[offset + 1] == 0
+            && pendingIncoming[offset + 2] == 0
+            && pendingIncoming[offset + 3] == 0;
     }
 
     private VRX lookupVrx() {
@@ -181,6 +240,7 @@ public class RFModuleSimulator {
             Logger.printlnGlobal("[rf_module_simulator_thread] Error closing client socket: " + e.getMessage());
         } finally {
             clientSocket = null;
+            pendingIncomingLength = 0;
         }
     }
 

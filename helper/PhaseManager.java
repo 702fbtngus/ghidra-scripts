@@ -169,6 +169,7 @@ public final class PhaseManager {
     }
 
     public void incrementInstructionCount(String taskName, boolean interrupted) {
+        totalInstructionCount++;
         if (interrupted) {
             interruptState.setPhaseInstructionCount(interruptState.getPhaseInstructionCount() + 1);
             return;
@@ -176,7 +177,7 @@ public final class PhaseManager {
 
         Phase phase = getTaskPhase(taskName);
         phase.setPhaseInstructionCount(phase.getPhaseInstructionCount() + 1);
-        totalInstructionCount++;
+        // totalInstructionCount++;
     }
 
     public void decrementInstructionCount(String taskName) {

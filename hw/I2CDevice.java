@@ -17,6 +17,7 @@ public abstract class I2CDevice extends Device {
     public final int addr;
     public byte[] response;
     public int respIndex;
+    protected int responseLength = -1;
 
     public I2CDevice(DeviceManager deviceManager, String name, int addr) {
         super(deviceManager, name);
@@ -29,8 +30,21 @@ public abstract class I2CDevice extends Device {
     public abstract boolean tx(byte value);
 
     public Byte rx() {
-        return response[respIndex++];
-    };
+        if (respIndex < getResponseLimit()) {
+            return response[respIndex++];
+        }
+        return (byte) 0xFF;
+    }
+
+    protected int getResponseLimit() {
+        if (response == null) {
+            return 0;
+        }
+        if (responseLength >= 0) {
+            return Math.min(responseLength, response.length);
+        }
+        return response.length;
+    }
 
     public void onI2CEvent(I2CEvent event) {}
 }

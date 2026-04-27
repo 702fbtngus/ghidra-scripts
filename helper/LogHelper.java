@@ -53,7 +53,8 @@ public final class LogHelper {
 
     public boolean printerMask(int i) {
         Phase phase = phaseManager.getTaskPhase(currentTaskNameSupplier.get());
-        return !"-25".equals(phase.getPhaseCode()) || i == 6 || i == 7;
+        // return !"-25".equals(phase.getPhaseCode()) || i == 6 || i == 7;
+        return true;
     }
 
     public void printPcodeOps(PcodeOp[] ops) {

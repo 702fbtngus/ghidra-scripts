@@ -169,6 +169,8 @@ public class CallGraphBuilder extends GhidraScript {
     private int unresolvedVisitedAddressCount;
     private int reachableNodeCount;
     private int reachableEdgeCount;
+    private long totalExecutedInstructionCount;
+    private long sentPacketCount;
     private final List<String> threadEntrySeedLog = new ArrayList<>();
     private final List<String> entrypointColorLog = new ArrayList<>();
     private final Map<String, String> reachableVertexColorOverrides = new HashMap<>();
@@ -257,10 +259,10 @@ public class CallGraphBuilder extends GhidraScript {
 
         AttributedGraph graph = createGraph("Call Graph");
         vertexCache.clear();
-        List<TraceEntry> traceEntries = loadInstructionTraceEntries();
+        sentPacketCount = countSentPackets();
         buildCallGraph(graph, functions);
-        highlightObservedBranches(graph, traceEntries);
-        highlightVisitedExecution(graph, traceEntries, staticEdgeKeys);
+        highlightObservedBranches(graph);
+        highlightVisitedExecution(graph, staticEdgeKeys);
         Map<String, String> dynamicVertexColorOverrides = buildDynamicVertexColorOverrides(graph);
         Map<String, String> dynamicEdgeColorOverrides = buildDynamicEdgeColorOverrides(graph);
         Path dotPath = writeDotFile(
@@ -283,6 +285,8 @@ public class CallGraphBuilder extends GhidraScript {
             " layers=" + staticLayout.layerCount +
             " redBranches=" + observedBranchEdgeCount +
             " greenVisited=" + visitedEdgeCount +
+            "\nexecutedInstr=" + formatCount(totalExecutedInstructionCount) +
+            " sentPackets=" + formatCount(sentPacketCount) +
             "\nstaticNodeCoverage=" + buildCoverageSummary(coveredStaticNodeCount, coverableStaticNodeCount) +
             " staticEdgeCoverage=" + buildCoverageSummary(coveredStaticEdgeCount, coverableStaticEdgeCount),
             "callgraph_dynamic.png",
@@ -318,6 +322,8 @@ public class CallGraphBuilder extends GhidraScript {
         println("Observed branch entries unresolved: " + unresolvedBranchEntryCount);
         println("Visited nodes highlighted: " + visitedNodeCount);
         println("Visited edges highlighted: " + visitedEdgeCount);
+        println("Executed instructions total: " + formatCount(totalExecutedInstructionCount));
+        println("Sent packets total: " + formatCount(sentPacketCount));
         println(
             "Static nodes covered: " +
             buildCoverageSummary(coveredStaticNodeCount, coverableStaticNodeCount)
@@ -887,49 +893,58 @@ public class CallGraphBuilder extends GhidraScript {
         return new GraphLayout(width, height, orderedLayers.size(), nodeLayouts, positions, new ArrayList<>());
     }
 
-    private void highlightObservedBranches(AttributedGraph graph, List<TraceEntry> traceEntries) throws Exception {
+    private void highlightObservedBranches(AttributedGraph graph) throws Exception {
         observedBranchEntryCount = 0;
         observedBranchEdgeCount = 0;
         unresolvedBranchEntryCount = 0;
-        if (traceEntries.isEmpty()) {
+        Path instrLogPath = resolveInputPath("log/instr.log");
+        if (!Files.exists(instrLogPath)) {
             return;
         }
 
         Set<String> highlightedEdges = new TreeSet<>();
         FunctionManager functionManager = currentProgram.getFunctionManager();
         TraceEntry previousEntry = null;
-        for (TraceEntry currentEntry : traceEntries) {
-            monitor.checkCancelled();
+        // Stream the trace so multi-million-line logs do not need to fit in heap at once.
+        try (var reader = Files.newBufferedReader(instrLogPath)) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                monitor.checkCancelled();
 
-            if (previousEntry == null) {
+                TraceEntry currentEntry = parseInstructionLogEntry(line);
+                if (currentEntry == null) {
+                    continue;
+                }
+                if (previousEntry == null) {
+                    previousEntry = currentEntry;
+                    continue;
+                }
+                if (isExcludedDynamicTransition(previousEntry, currentEntry)) {
+                    previousEntry = currentEntry;
+                    continue;
+                }
+
+                Instruction previousInstruction = getInstructionAt(toAddr(previousEntry.addressValue));
+                boolean interruptReturn = previousEntry.interrupted && !currentEntry.interrupted;
+                if (previousInstruction == null ||
+                    previousInstruction.getFlowType().isTerminal() ||
+                    interruptReturn ||
+                    isExpectedSuccessor(previousInstruction, currentEntry.addressValue)) {
+                    previousEntry = currentEntry;
+                    continue;
+                }
+
+                observedBranchEntryCount++;
+                AttributedVertex sourceVertex = resolveBranchVertex(graph, functionManager, previousEntry.addressValue);
+                AttributedVertex targetVertex = resolveBranchVertex(graph, functionManager, currentEntry.addressValue);
+                markObservedBranchVertex(sourceVertex);
+                markObservedBranchVertex(targetVertex);
+
+                AttributedEdge edge = graph.addEdge(sourceVertex, targetVertex);
+                markObservedBranchEdge(edge);
+                highlightedEdges.add(sourceVertex.getId() + "->" + targetVertex.getId());
                 previousEntry = currentEntry;
-                continue;
             }
-            if (isExcludedDynamicTransition(previousEntry, currentEntry)) {
-                previousEntry = currentEntry;
-                continue;
-            }
-
-            Instruction previousInstruction = getInstructionAt(toAddr(previousEntry.addressValue));
-            boolean interruptReturn = previousEntry.interrupted && !currentEntry.interrupted;
-            if (previousInstruction == null ||
-                previousInstruction.getFlowType().isTerminal() ||
-                interruptReturn ||
-                isExpectedSuccessor(previousInstruction, currentEntry.addressValue)) {
-                previousEntry = currentEntry;
-                continue;
-            }
-
-            observedBranchEntryCount++;
-            AttributedVertex sourceVertex = resolveBranchVertex(graph, functionManager, previousEntry.addressValue);
-            AttributedVertex targetVertex = resolveBranchVertex(graph, functionManager, currentEntry.addressValue);
-            markObservedBranchVertex(sourceVertex);
-            markObservedBranchVertex(targetVertex);
-
-            AttributedEdge edge = graph.addEdge(sourceVertex, targetVertex);
-            markObservedBranchEdge(edge);
-            highlightedEdges.add(sourceVertex.getId() + "->" + targetVertex.getId());
-            previousEntry = currentEntry;
         }
 
         observedBranchEdgeCount = highlightedEdges.size();
@@ -937,7 +952,6 @@ public class CallGraphBuilder extends GhidraScript {
 
     private void highlightVisitedExecution(
         AttributedGraph graph,
-        List<TraceEntry> traceEntries,
         Set<String> staticEdgeKeys
     ) throws Exception {
         visitedNodeCount = 0;
@@ -945,7 +959,9 @@ public class CallGraphBuilder extends GhidraScript {
         coveredStaticNodeCount = 0;
         coveredStaticEdgeCount = 0;
         unresolvedVisitedAddressCount = 0;
-        if (traceEntries.isEmpty()) {
+        totalExecutedInstructionCount = 0;
+        Path instrLogPath = resolveInputPath("instr.log");
+        if (!Files.exists(instrLogPath)) {
             return;
         }
 
@@ -956,42 +972,51 @@ public class CallGraphBuilder extends GhidraScript {
         FunctionManager functionManager = currentProgram.getFunctionManager();
         AttributedVertex previousVertex = null;
         TraceEntry previousEntry = null;
-        for (TraceEntry currentEntry : traceEntries) {
-            monitor.checkCancelled();
+        try (var reader = Files.newBufferedReader(instrLogPath)) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                monitor.checkCancelled();
 
-            AttributedVertex currentVertex = resolveTraceVertex(graph, functionManager, currentEntry.addressValue);
-            if (currentVertex == null) {
-                unresolvedVisitedAddressCount++;
-                previousVertex = null;
-                previousEntry = currentEntry;
-                continue;
-            }
+                TraceEntry currentEntry = parseInstructionLogEntry(line);
+                if (currentEntry == null) {
+                    continue;
+                }
+                totalExecutedInstructionCount++;
 
-            markVisitedVertex(currentVertex);
-            visitedVertices.add(currentVertex.getId());
-            if (!shouldExcludeVertexFromCoverage(currentVertex)) {
-                coveredStaticVertices.add(currentVertex.getId());
-            }
+                AttributedVertex currentVertex = resolveTraceVertex(graph, functionManager, currentEntry.addressValue);
+                if (currentVertex == null) {
+                    unresolvedVisitedAddressCount++;
+                    previousVertex = null;
+                    previousEntry = currentEntry;
+                    continue;
+                }
 
-            if (previousVertex != null &&
-                !previousVertex.getId().equals(currentVertex.getId()) &&
-                !isExcludedDynamicTransition(previousEntry, currentEntry)) {
-                Instruction previousInstruction = getInstructionAt(toAddr(previousEntry.addressValue));
-                if (previousInstruction != null && !previousInstruction.getFlowType().isTerminal()) {
-                    AttributedEdge edge = graph.addEdge(previousVertex, currentVertex);
-                    markVisitedEdge(edge);
-                    String edgeKey = buildEdgeKey(previousVertex, currentVertex);
-                    visitedEdges.add(edgeKey);
-                    if (staticEdgeKeys.contains(edgeKey) &&
-                        !shouldExcludeVertexFromCoverage(previousVertex) &&
-                        !shouldExcludeVertexFromCoverage(currentVertex)) {
-                        coveredStaticEdges.add(edgeKey);
+                markVisitedVertex(currentVertex);
+                visitedVertices.add(currentVertex.getId());
+                if (!shouldExcludeVertexFromCoverage(currentVertex)) {
+                    coveredStaticVertices.add(currentVertex.getId());
+                }
+
+                if (previousVertex != null &&
+                    !previousVertex.getId().equals(currentVertex.getId()) &&
+                    !isExcludedDynamicTransition(previousEntry, currentEntry)) {
+                    Instruction previousInstruction = getInstructionAt(toAddr(previousEntry.addressValue));
+                    if (previousInstruction != null && !previousInstruction.getFlowType().isTerminal()) {
+                        AttributedEdge edge = graph.addEdge(previousVertex, currentVertex);
+                        markVisitedEdge(edge);
+                        String edgeKey = buildEdgeKey(previousVertex, currentVertex);
+                        visitedEdges.add(edgeKey);
+                        if (staticEdgeKeys.contains(edgeKey) &&
+                            !shouldExcludeVertexFromCoverage(previousVertex) &&
+                            !shouldExcludeVertexFromCoverage(currentVertex)) {
+                            coveredStaticEdges.add(edgeKey);
+                        }
                     }
                 }
-            }
 
-            previousVertex = currentVertex;
-            previousEntry = currentEntry;
+                previousVertex = currentVertex;
+                previousEntry = currentEntry;
+            }
         }
 
         visitedNodeCount = visitedVertices.size();
@@ -1628,20 +1653,24 @@ public class CallGraphBuilder extends GhidraScript {
             currentEntry.addressValue == INTERRUPT_ENTRY_ADDRESS;
     }
 
-    private List<TraceEntry> loadInstructionTraceEntries() throws IOException {
-        Path instrLogPath = getInputLogPath("instr.log");
-        if (!Files.exists(instrLogPath)) {
-            return new ArrayList<>();
+    private long countSentPackets() throws IOException {
+        Path responseLogPath = resolveInputPath("response_ghidra.log");
+        if (!Files.exists(responseLogPath)) {
+            return 0;
         }
 
-        List<TraceEntry> traceEntries = new ArrayList<>();
-        for (String line : Files.readAllLines(instrLogPath)) {
-            TraceEntry entry = parseInstructionLogEntry(line);
-            if (entry != null) {
-                traceEntries.add(entry);
+        long sentPackets = 0;
+        try (var reader = Files.newBufferedReader(responseLogPath)) {
+            String rawLine;
+            while ((rawLine = reader.readLine()) != null) {
+                String line = rawLine.trim();
+                if (!line.startsWith("Sent(")) {
+                    continue;
+                }
+                sentPackets++;
             }
         }
-        return traceEntries;
+        return sentPackets;
     }
 
     private TraceEntry parseInstructionLogEntry(String line) {
@@ -2280,6 +2309,17 @@ public class CallGraphBuilder extends GhidraScript {
         );
     }
 
+    private Path resolveInputPath(String filename) {
+        Path directPath = Path.of(
+            getSourceFile().getParentFile().getAbsolutePath(),
+            filename
+        );
+        if (Files.exists(directPath)) {
+            return directPath;
+        }
+        return getInputLogPath(filename);
+    }
+
     private Path getOutputPath(String filename) {
         return Path.of(
             getSourceFile().getParentFile().getAbsolutePath(),
@@ -2334,6 +2374,10 @@ public class CallGraphBuilder extends GhidraScript {
             return value;
         }
         return value.substring(0, Math.max(0, maxLength - 3)) + "...";
+    }
+
+    private String formatCount(long value) {
+        return String.format("%,d", value);
     }
 
     private Color parseHexColor(String hexColor) {

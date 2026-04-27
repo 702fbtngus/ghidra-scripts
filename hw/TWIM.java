@@ -324,7 +324,7 @@ public class TWIM extends MmioDevice {
     }
 
     private void consumeReceiveByte() {
-        if (!commandActive || !isReadCommand(CMDR.value) || remainingBytes <= 0) {
+        if (!commandActive || !isReadCommand(CMDR.value)) {
             return;
         }
 

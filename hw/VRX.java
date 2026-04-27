@@ -91,14 +91,6 @@ public class VRX extends I2CDevice {
         return false;
     }
 
-    @Override
-    public Byte rx() {
-        if (response == null || respIndex >= response.length) {
-            return (byte) 0xFF;
-        }
-        return response[respIndex++];
-    }
-
     private byte[] buildFrameResponse() {
         byte[] packet = packetQueue.peekFirst();
         int packetLength = packet == null ? 0 : Math.min(packet.length, VRX_MAX_PACKET_LENGTH);

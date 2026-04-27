@@ -61,6 +61,33 @@ public class CubeSatEmulator extends GhidraScript {
             // || (currentPhase == 1)
         );
     }
+    private boolean interruptInstructionLimitReached() {
+        return context.interrupted
+            && context.interruptInstructionLimit > 0
+            && phaseManager.getInterruptPhase().getPhaseInstructionCount() >= context.interruptInstructionLimit;
+    }
+
+    private void stopClockThreads() {
+        if (tc0 != null) {
+            tc0.exitClockThread();
+        }
+        if (tc1 != null) {
+            tc1.exitClockThread();
+        }
+    }
+
+    private void finalizeLogging() {
+        if (context.toMain) {
+            logger.dumpAndFlush();
+            return;
+        }
+        logger.flush();
+    }
+
+    private void shutdownEmulation() {
+        stopClockThreads();
+        finalizeLogging();
+    }
     public final DeviceManager deviceManager = new DeviceManager(cpuState);
 
     // Devices
@@ -86,6 +113,21 @@ public class CubeSatEmulator extends GhidraScript {
 
                 if (context.instructionLimit < 0) {
                     throw new IllegalArgumentException("--num-instr must be non-negative");
+                }
+
+                continue;
+            }
+
+            if (arg.startsWith("--max-interrupt-instr=")) {
+                String value = arg.substring("--max-interrupt-instr=".length());
+                try {
+                    context.interruptInstructionLimit = Integer.parseInt(value);
+                } catch (NumberFormatException e) {
+                    throw new IllegalArgumentException("Invalid --max-interrupt-instr value: " + value, e);
+                }
+
+                if (context.interruptInstructionLimit < 0) {
+                    throw new IllegalArgumentException("--max-interrupt-instr must be non-negative");
                 }
 
                 continue;
@@ -231,14 +273,21 @@ public class CubeSatEmulator extends GhidraScript {
             //     temp = n;
             // }
             if (executeManager.executeInstr() == -1) {
+                shutdownEmulation();
                 return;
             }
             phaseManager.incrementInstructionCount(context.currentTaskName, context.interrupted);
+            if (interruptInstructionLimitReached()) {
+                println(String.format(
+                    "Interrupt instruction limit reached (%d). Stopping emulation to preserve buffered context.",
+                    context.interruptInstructionLimit
+                ));
+                shutdownEmulation();
+                return;
+            }
             interruptManager.handleInterrupt();
             if (exitCondition()) {
-                tc0.exitClockThread();
-                tc1.exitClockThread();
-                logger.flush();
+                shutdownEmulation();
                 return;
             }
         }

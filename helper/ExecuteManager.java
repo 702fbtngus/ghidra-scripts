@@ -83,11 +83,15 @@ public final class ExecuteManager {
             }
             for (int tcb: taskManager.getAllTCBs()) {
                 if (addr == tcb + 0x2c) {
-                    String taskName = cpuState.readString(tcb + 0x34);
-                    int prio = cpuState.getRAMValue(tcb + 0x2c);
+                    String taskName = taskManager.getTaskNameByTCB(tcb);
+                    int oldPrio = taskName != null ? taskManager.getPriority(taskName) : -1;
+                    int newPrio = cpuState.getRAMValue(tcb + 0x2c);
+                    if (taskName == null) {
+                        taskName = cpuState.readString(tcb + 0x34);
+                    }
                     logger.println(String.format("addr: 0x%08X", addr), 6);
-                    logger.println(String.format("Priority of %s changed to %d", taskName, prio), 6);
-                    taskManager.changePrio(taskName, prio);
+                    logger.println(String.format("Priority of %s changed: %d -> %d", taskName, oldPrio, newPrio), 6);
+                    taskManager.changePrio(taskName, newPrio);
                     return 0;
                 }
                 if (addr == tcb + 0x4) {
@@ -213,6 +217,14 @@ public final class ExecuteManager {
                 context.currentFrame.finishAsBranch();
                 break;
 
+            case 0x800125b8: {
+                // clyde_eps_get_status calling clyde_eps_cmd
+                println("clyde_eps_get_status called");
+                // set delay to 0
+                cpuState.setRegisterValue("R12", 0);
+                break;
+            }
+
             case 0x80029ab0:
                 // Entered gs_i2c_master_transaction
                 println("gs_i2c_master_transaction called", 2);
@@ -227,6 +239,7 @@ public final class ExecuteManager {
                 println("gs_i2c_master_transaction exiting", 2);
                 int res = cpuState.getRegisterValue("R12");
                 println(String.format("res: 0x%X", res), 2);
+                // println(String.format("res: %s", cpuState.getRAMValues(res, 10)), 2);
                 break;
             }
                 
@@ -249,18 +262,18 @@ public final class ExecuteManager {
         
             case 0x80016cbc: {
                 int r4 = cpuState.getRegisterValue("R4");
-                println("r4 = 0x" + Integer.toHexString(r4), 1);
+                println("r4 = 0x" + Integer.toHexString(r4), -1);
                 int r5 = cpuState.getRegisterValue("R5");
-                println("r5 = 0x" + Integer.toHexString(r5), 1);
+                println("r5 = 0x" + Integer.toHexString(r5), -1);
                 int r6 = cpuState.getRegisterValue("R6");
-                println("r6 = 0x" + Integer.toHexString(r6), 1);
+                println("r6 = 0x" + Integer.toHexString(r6), -1);
                 break;
             }
         
             case 0x8001d0e0: {
                 // memcpy before
                 int r11 = cpuState.getRegisterValue("R11");
-                println("r11 = 0x" + Integer.toHexString(r11), 1);
+                println("r11 = 0x" + Integer.toHexString(r11), -1);
                 println(String.format("res: %s", cpuState.getRAMValues(r11, 10)), 2);
                 break;
             }
@@ -268,11 +281,27 @@ public final class ExecuteManager {
             case 0x8001d0e4: {
                 // vrx_get_frame done
                 int r7 = cpuState.getRegisterValue("R7");
-                println("r7 = 0x" + Integer.toHexString(r7), 1);
-                println(String.format("rx_length: 0x%X", cpuState.getRAMValue(r7, 2)), 1);
-                println(String.format("doppler_freq: 0x%X", cpuState.getRAMValue(r7 + 2, 2)), 1);
-                println(String.format("sig_strength: 0x%X", cpuState.getRAMValue(r7 + 4, 2)), 1);
+                println("r7 = 0x" + Integer.toHexString(r7), -1);
+                println(String.format("rx_length: 0x%X", cpuState.getRAMValue(r7, 2)), -1);
+                println(String.format("doppler_freq: 0x%X", cpuState.getRAMValue(r7 + 2, 2)), -1);
+                println(String.format("sig_strength: 0x%X", cpuState.getRAMValue(r7 + 4, 2)), -1);
                 println(String.format("rx_content: %s", cpuState.getRAMValues(r7 + 6, 10)), 2);
+                break;
+            }
+
+            case 0x8003769a: {
+                // memset begin
+                println("memset begin", -1);
+                int r10 = cpuState.getRegisterValue("R10");
+                println("n = 0x" + Integer.toHexString(r10), -1);
+                break;
+            }
+        
+            case 0x80005b28: {
+                // memcpy begin
+                println("memcpy begin", -1);
+                int r10 = cpuState.getRegisterValue("R10");
+                println("n = 0x" + Integer.toHexString(r10), -1);
                 break;
             }
         
@@ -305,15 +334,15 @@ public final class ExecuteManager {
                 int r12 = cpuState.getRegisterValue("R12");
                 int r11 = cpuState.getRegisterValue("R11");
                 int r10 = cpuState.getRegisterValue("R10");
-                println("cmd_result[2] = 0x" + Integer.toHexString(r12), 1);
-                println("uptime_data = 0x" + Integer.toHexString(r11), 1);
-                println("sizeof(uptime_data) = 0x" + Integer.toHexString(r10), 1);
+                println("cmd_result[2] = 0x" + Integer.toHexString(r12), -1);
+                println("uptime_data = 0x" + Integer.toHexString(r11), -1);
+                println("sizeof(uptime_data) = 0x" + Integer.toHexString(r10), -1);
                 break;
             }
             case 0x8001d2d8: {
                 // memset finished
-                println("*cmd_result = 0x" + Integer.toHexString(cpuState.getRAMValue(0x9eb0)), 1);
-                println("*cmd_result + 4 = 0x" + Integer.toHexString(cpuState.getRAMValue(0x9eb4)), 1);
+                println("*cmd_result = 0x" + Integer.toHexString(cpuState.getRAMValue(0x9eb0)), -1);
+                println("*cmd_result + 4 = 0x" + Integer.toHexString(cpuState.getRAMValue(0x9eb4)), -1);
                 break;
             }
             case 0x800171d6: {
@@ -321,19 +350,19 @@ public final class ExecuteManager {
                 int r12 = cpuState.getRegisterValue("R12");
                 int r11 = cpuState.getRegisterValue("R11");
                 // cmd_result, sizeof(cmd_result)
-                println("cmd_result = 0x" + Integer.toHexString(r12), 1);
-                println("sizeof(cmd_result) = 0x" + Integer.toHexString(r11), 1);
-                println("*cmd_result = 0x" + Integer.toHexString(cpuState.getRAMValue(r12)), 1);
-                println("*cmd_result + 4 = 0x" + Integer.toHexString(cpuState.getRAMValue(r12 + 4)), 1);
+                println("cmd_result = 0x" + Integer.toHexString(r12), -1);
+                println("sizeof(cmd_result) = 0x" + Integer.toHexString(r11), -1);
+                println("*cmd_result = 0x" + Integer.toHexString(cpuState.getRAMValue(r12)), -1);
+                println("*cmd_result + 4 = 0x" + Integer.toHexString(cpuState.getRAMValue(r12 + 4)), -1);
                 break;
             }
             case 0x800171a8: {
                 // after memset
                 int sp = cpuState.getRegisterValue("SP");
-                println("*SP[0x1f2] = 0x" + Integer.toHexString(cpuState.getRAMValue(sp + 0x1f2)), 1);
-                println("*SP[0x1f3] = 0x" + Integer.toHexString(cpuState.getRAMValue(sp + 0x1f3)), 1);
-                println("*SP[0x1f4] = 0x" + Integer.toHexString(cpuState.getRAMValue(sp + 0x1f4)), 1);
-                println("*SP[0x1f5] = 0x" + Integer.toHexString(cpuState.getRAMValue(sp + 0x1f5)), 1);
+                println("*SP[0x1f2] = 0x" + Integer.toHexString(cpuState.getRAMValue(sp + 0x1f2)), -1);
+                println("*SP[0x1f3] = 0x" + Integer.toHexString(cpuState.getRAMValue(sp + 0x1f3)), -1);
+                println("*SP[0x1f4] = 0x" + Integer.toHexString(cpuState.getRAMValue(sp + 0x1f4)), -1);
+                println("*SP[0x1f5] = 0x" + Integer.toHexString(cpuState.getRAMValue(sp + 0x1f5)), -1);
                 break;
             }
                 
@@ -358,15 +387,20 @@ public final class ExecuteManager {
 
         taskManager.monitorTasks(addr);
         
-        println("", 1);
+        println("" + phaseManager.getTotalInstructionCount(), 1);
 
         adjustPhaseInstructionCount(instr, addr);
 
         beforeInstr();
-
+        PcodeFrame frame = thread.getFrame();
+        // if (frame != null && frame.isFinished()) {
+        //         thread.stepPcodeOp();
+        //         return 0;
+        //     }
+            
         if (logHelper.isInterestingInstr(instr, addr)) {
             thread.stepPcodeOp();
-            PcodeFrame frame = thread.getFrame();
+            frame = thread.getFrame();
             if (frame != null) {
                 context.currentFrame = frame;
                 var ops = frame.getCode();

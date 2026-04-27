@@ -49,6 +49,22 @@ public class TaskManager {
             .toArray();
     }
 
+    public String getTaskNameByTCB(int tcb) {
+        return taskMap.entrySet().stream()
+            .filter(entry -> entry.getValue().tcb == tcb)
+            .map(Entry::getKey)
+            .findFirst()
+            .orElse(null);
+    }
+
+    public int getPriority(String name) {
+        Task task = taskMap.get(name);
+        if (task != null) {
+            return task.priority;
+        }
+        return -1;
+    }
+
     public Task newEmptyTask(String name) {
         Task task = new Task(-1, -1, -1);
         taskMap.put(name, task);
@@ -120,6 +136,9 @@ public class TaskManager {
 
     public void changePrio(String name, int prio) {
         Task task = taskMap.get(name);
+        // if (task == null) {
+        //     return;
+        // }
         // fromTask.state = "";
         String state = task.state;
         task.state = String.format("P %s -> %s", task.priority, prio);
