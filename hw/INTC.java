@@ -16,6 +16,7 @@ public class INTC extends MmioDevice {
     private final Register[] ICR = new Register[4];
 
     public int highestPrio = -1;
+    public int highestPrioAddr = -1;
 
 
     public INTC(DeviceManager deviceManager, long baseAddr, String name, int group) {
@@ -147,22 +148,26 @@ public class INTC extends MmioDevice {
 
     private void updateHighestPriority() {
         int bestPrio = -1;
+        int bestAddr = -1;
     
         for (int irq = 0; irq < 64; irq++) {
             if (IRR[irq].value == 0)
                 continue;
     
             int prio = IPR[irq].value >>> 0x36;
+            int addr = IPR[irq].value & 0x3fff;
     
             if (prio > bestPrio ||
                (prio == bestPrio)) {
                 bestPrio = prio;
+                bestAddr = addr;
             }
             
             ICR[prio].value = irq;
         }
     
         highestPrio = bestPrio;
+        highestPrioAddr = bestAddr;
     }
     
 }

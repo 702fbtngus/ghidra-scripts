@@ -82,8 +82,8 @@ DEVICE_HEX = {
     ],
 }
 
-DEFAULT_DEVICE_ORDER = ["utx", "vrx"]
-# DEFAULT_DEVICE_ORDER = ["utx", "vrx", "eps", "uvant", "adcs", "hstx"]
+# DEFAULT_DEVICE_ORDER = ["utx", "vrx"]
+DEFAULT_DEVICE_ORDER = ["utx", "vrx", "eps", "uvant", "adcs", "hstx"]
 DEFAULT_BATCH_SIZE = 30
 DEFAULT_BATCH_TIMEOUT_SECONDS = 0.0
 VRX_REMOVE_FRAME_KEY = (0x29, 0x24)

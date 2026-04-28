@@ -117,7 +117,9 @@ public class UseropLibrary extends AnnotatedPcodeUseropLibrary<byte[]> {
                 cpuState.setRegisterValue("SR", sr);
 
                 Logger.printlnGlobal("privilege exception violation!!!!");
-                cpuState.setRegisterValue("PC", 0x8005ab20);
+                int evba = cpuState.getRegisterValue("EVBA");
+                cpuState.setRegisterValue("PC", evba + 0x28);
+                // cpuState.setRegisterValue("PC", 0x8005ab20);
 
             break;
             case 0b001:
@@ -143,6 +145,7 @@ public class UseropLibrary extends AnnotatedPcodeUseropLibrary<byte[]> {
         int sr = cpuState.getRegisterValue("SR");
         int mode = (sr >> 22) & 0x7;
         Logger.printlnGlobal("mode: " + mode, 4);
+        int evba = cpuState.getRegisterValue("EVBA");
         switch (mode) {
             case 0b000:
             case 0b001:
@@ -166,7 +169,8 @@ public class UseropLibrary extends AnnotatedPcodeUseropLibrary<byte[]> {
                 sr &= ~(0b111 << 22);
                 sr |= 0b001 << 22;
                 cpuState.setRegisterValue("SR", sr);
-                cpuState.setRegisterValue("PC", 0x8005ab00);
+                cpuState.setRegisterValue("PC", evba + 0x100);
+                // cpuState.setRegisterValue("PC", 0x8005ab00);
                 
                 break;
                 
@@ -175,7 +179,8 @@ public class UseropLibrary extends AnnotatedPcodeUseropLibrary<byte[]> {
                 // PC ← EVBA + 0x100;
 
                 cpuState.setRegisterValue("LR", cpuState.nextInstructionAddr(cpuState.getRegisterValue("PC")));
-                cpuState.setRegisterValue("PC", 0x8005ab00);
+                cpuState.setRegisterValue("PC", evba + 0x100);
+                // cpuState.setRegisterValue("PC", 0x8005ab00);
 
                 break;
         }

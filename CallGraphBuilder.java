@@ -179,11 +179,42 @@ public class CallGraphBuilder extends GhidraScript {
     private final Map<String, Integer> reachableSeedOrder = new HashMap<>();
     private final Map<String, String> layoutVertexOwnerGroup = new HashMap<>();
     private final Map<String, Integer> layoutGroupOrder = new HashMap<>();
+    private boolean staticOnlyMode;
+    private String outputSubdir;
     private Function cachedThreadCreateFunction;
     private Function cachedScallYieldFunction;
 
+    private void parseScriptArgs() {
+        staticOnlyMode = false;
+        outputSubdir = null;
+
+        String[] scriptArgs = getScriptArgs();
+        if (scriptArgs == null) {
+            return;
+        }
+
+        for (String scriptArg : scriptArgs) {
+            if ("--static-only".equals(scriptArg)) {
+                staticOnlyMode = true;
+                continue;
+            }
+            if (scriptArg.startsWith("--output-subdir=")) {
+                outputSubdir = scriptArg.substring("--output-subdir=".length());
+                if (outputSubdir.isBlank()) {
+                    throw new IllegalArgumentException("--output-subdir requires a non-empty value.");
+                }
+                if (outputSubdir.startsWith("/") || outputSubdir.contains("..")) {
+                    throw new IllegalArgumentException("--output-subdir must stay within the cg output directory.");
+                }
+                continue;
+            }
+            throw new IllegalArgumentException("Unknown argument: " + scriptArg);
+        }
+    }
+
     @Override
     protected void run() throws Exception {
+        parseScriptArgs();
         List<Function> functions = getAllFunctions();
         cachedThreadCreateFunction = findNamedFunction(functions, THREAD_CREATE_FUNCTION_NAME);
         cachedScallYieldFunction = findNamedFunction(functions, SCALL_YIELD_FUNCTION_NAME);
@@ -257,6 +288,28 @@ public class CallGraphBuilder extends GhidraScript {
             staticLayout
         );
 
+        println("Program: " + getProgramDisplayName());
+        println("Functions in graph: " + staticGraph.getVertexCount());
+        println("Static graph edges total: " + staticGraph.getEdgeCount());
+        println("Static DOT export: " + staticDotPath.toAbsolutePath());
+        println("Static PNG export: " + staticPngPath.toAbsolutePath());
+        println("Reachable nodes highlighted: " + reachableNodeCount);
+        println("Reachable edges highlighted: " + reachableEdgeCount);
+        println("Reachable DOT export: " + reachableDotPath.toAbsolutePath());
+        println("Reachable PNG export: " + reachablePngPath.toAbsolutePath());
+        println("Thread entry seeds found: " + threadEntrySeedLog.size());
+        for (String threadEntryRecord : threadEntrySeedLog) {
+            println("Thread entry seed: " + threadEntryRecord);
+        }
+        for (String entrypointColorRecord : entrypointColorLog) {
+            println("Entrypoint color: " + entrypointColorRecord);
+        }
+
+        if (staticOnlyMode) {
+            println("Dynamic graph generation skipped (--static-only).");
+            return;
+        }
+
         AttributedGraph graph = createGraph("Call Graph");
         vertexCache.clear();
         sentPacketCount = countSentPackets();
@@ -300,22 +353,6 @@ public class CallGraphBuilder extends GhidraScript {
             staticLayout
         );
 
-        println("Program: " + currentProgram.getName());
-        println("Functions in graph: " + staticGraph.getVertexCount());
-        println("Static graph edges total: " + staticGraph.getEdgeCount());
-        println("Static DOT export: " + staticDotPath.toAbsolutePath());
-        println("Static PNG export: " + staticPngPath.toAbsolutePath());
-        println("Reachable nodes highlighted: " + reachableNodeCount);
-        println("Reachable edges highlighted: " + reachableEdgeCount);
-        println("Reachable DOT export: " + reachableDotPath.toAbsolutePath());
-        println("Reachable PNG export: " + reachablePngPath.toAbsolutePath());
-        println("Thread entry seeds found: " + threadEntrySeedLog.size());
-        for (String threadEntryRecord : threadEntrySeedLog) {
-            println("Thread entry seed: " + threadEntryRecord);
-        }
-        for (String entrypointColorRecord : entrypointColorLog) {
-            println("Entrypoint color: " + entrypointColorRecord);
-        }
         println("Dynamic graph edges total: " + graph.getEdgeCount());
         println("Observed branch entries: " + observedBranchEntryCount);
         println("Observed branch edges highlighted: " + observedBranchEdgeCount);
@@ -343,11 +380,18 @@ public class CallGraphBuilder extends GhidraScript {
         }
     }
 
+    private String getProgramDisplayName() {
+        if (currentProgram != null && currentProgram.getDomainFile() != null) {
+            return currentProgram.getDomainFile().getName();
+        }
+        return currentProgram.getName();
+    }
+
     private AttributedGraph createGraph(String title) {
         return new AttributedGraph(
             title,
             new CallGraphType(),
-            "Whole-program call graph for " + currentProgram.getName()
+            "Whole-program call graph for " + getProgramDisplayName()
         );
     }
 
@@ -546,7 +590,7 @@ public class CallGraphBuilder extends GhidraScript {
             .build();
 
         display.setGraph(graph, options,
-            currentProgram.getName() + " - Call Graph", false, monitor);
+            getProgramDisplayName() + " - Call Graph", false, monitor);
         return true;
     }
 
@@ -2321,6 +2365,14 @@ public class CallGraphBuilder extends GhidraScript {
     }
 
     private Path getOutputPath(String filename) {
+        if (outputSubdir != null) {
+            return Path.of(
+                getSourceFile().getParentFile().getAbsolutePath(),
+                "cg",
+                outputSubdir,
+                filename
+            );
+        }
         return Path.of(
             getSourceFile().getParentFile().getAbsolutePath(),
             "cg",

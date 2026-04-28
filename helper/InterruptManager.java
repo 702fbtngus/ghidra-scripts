@@ -18,7 +18,7 @@ public final class InterruptManager {
     }
 
 
-    public void callInterruptWrapper(int i) {
+    public void callInterruptWrapper(int i, int addr) {
         // *(--SPSYS) = R8;
         // *(--SPSYS) = R9;
         // *(--SPSYS) = R10;
@@ -86,12 +86,15 @@ public final class InterruptManager {
 
         cpuState.setRegisterValue("SR", sr);
 
-        cpuState.setRegisterValue("PC", 0x8005ab20);
+        // cpuState.setRegisterValue("PC", 0x8005ab20);
+        int evba = cpuState.getRegisterValue("EVBA");
+        cpuState.setRegisterValue("PC", evba + addr);
         cpuState.finishFrame();
     }
 
     public void handleInterrupt() {
         int prio = intc.highestPrio;
+        int addr = intc.highestPrioAddr;
         // helper.println("highestprio: " + prio);
         int sr = cpuState.getRegisterValue("SR");
         // helper.println("sr: " + helper.intToHex(sr));
@@ -100,7 +103,7 @@ public final class InterruptManager {
                 ((sr >> (17 + prio)) & 1) == 0
                 && ((sr >> 16) & 1) == 0
             ) {
-                callInterruptWrapper(prio);
+                callInterruptWrapper(prio, addr);
             }
         }
     }

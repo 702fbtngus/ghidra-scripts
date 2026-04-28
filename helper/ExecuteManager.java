@@ -23,6 +23,7 @@ public final class ExecuteManager {
     private final Logger logger;
     private final PhaseManager phaseManager;
     private final ProgramUtil programUtil;
+    private final DynamicFlowTracker dynamicFlowTracker;
 
 
     public ExecuteManager(DeviceManager deviceManager, Context context, CPUState cpuState, LogHelper logHelper, TaskManager taskManager, Logger logger, PhaseManager phaseManager, ProgramUtil programUtil) {
@@ -34,6 +35,7 @@ public final class ExecuteManager {
         this.logger = logger;
         this.phaseManager = phaseManager;
         this.programUtil = programUtil;
+        this.dynamicFlowTracker = new DynamicFlowTracker(context, logger);
     }
 
     public void println(String s, int i) {
@@ -485,11 +487,16 @@ public final class ExecuteManager {
         } else {
             thread.stepInstruction();
         }
+        dynamicFlowTracker.recordComputedFlow(instr, thread.getCounter());
         int sp = cpuState.getRegisterValue("SP");
         if (sp != old_sp) {
             logHelper.printStack();
         }
         logHelper.printOutputRegisters(thread, addr);
         return 0;
+    }
+
+    public void close() {
+        dynamicFlowTracker.close();
     }
 }
