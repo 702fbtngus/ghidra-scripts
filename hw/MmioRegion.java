@@ -24,7 +24,7 @@ public abstract class MmioRegion {
     }
 
     protected final Register newRegister(int offset, int value, AccessType at) {
-        return owner.newRegister(baseOffset + offset, value, at);
+        return owner.newRegister(baseOffset + offset, value, at, this);
     }
 
     protected final void addRegion(MmioRegion region) {
@@ -61,21 +61,6 @@ public abstract class MmioRegion {
     protected void afterWrite(int offset, int value) {}
 
     protected void beforeRead(int offset) {}
-
-    final MmioRegion findRegion(int offset) {
-        if (!contains(offset)) {
-            return null;
-        }
-
-        for (MmioRegion child : regions) {
-            MmioRegion region = child.findRegion(offset);
-            if (region != null) {
-                return region;
-            }
-        }
-
-        return this;
-    }
 
     protected void println(String message) {
         owner.println(message);

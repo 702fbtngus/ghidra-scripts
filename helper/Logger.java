@@ -93,6 +93,10 @@ public class Logger {
         flush();
     }
 
+    public Path resolveLogPath(String filename) {
+        return Path.of(basePath, "log", filename);
+    }
+
     public void flush() {
         if (pw != null) {
             for (PrintWriter p : pw) {

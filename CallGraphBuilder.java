@@ -41,15 +41,19 @@ import ghidra.app.services.GraphDisplayBroker;
 import ghidra.framework.plugintool.PluginTool;
 import ghidra.graph.CallGraphType;
 import ghidra.graph.ProgramGraphType;
+import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionIterator;
 import ghidra.program.model.listing.FunctionManager;
 import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.InstructionIterator;
+import ghidra.program.model.mem.Memory;
 import ghidra.program.model.pcode.HighFunction;
 import ghidra.program.model.pcode.PcodeOp;
 import ghidra.program.model.pcode.PcodeOpAST;
 import ghidra.program.model.pcode.Varnode;
+import ghidra.program.model.symbol.FlowType;
+import ghidra.program.model.symbol.Reference;
 import ghidra.service.graph.AttributedEdge;
 import ghidra.service.graph.AttributedGraph;
 import ghidra.service.graph.AttributedVertex;
@@ -57,6 +61,7 @@ import ghidra.service.graph.GraphDisplay;
 import ghidra.service.graph.GraphDisplayOptions;
 import ghidra.service.graph.GraphDisplayOptionsBuilder;
 import ghidra.service.graph.VertexShape;
+import helper.ProgramEntryResolver;
 
 public class CallGraphBuilder extends GhidraScript {
 
@@ -75,25 +80,18 @@ public class CallGraphBuilder extends GhidraScript {
     private static final String BRANCH_EDGE_TYPE = "Observed Branch";
     private static final String VISITED_BRANCH_EDGE_TYPE = "Visited Observed Branch";
     private static final String THREAD_CREATE_FUNCTION_NAME = "gs_thread_create";
+    private static final String X_TASK_CREATE_FUNCTION_NAME = "xTaskCreate";
     private static final String SCALL_YIELD_FUNCTION_NAME = "SCALLYield";
-    private static final String[] EXCLUDED_FUNCTION_PREFIXES = {
-        "cmd_",
-        "gs_vmem_cmd",
-        "gs_checkout_cmd",
-        "gs_log_cmd",
-        "gs_command_cmd",
-        "adc_read",
-        "hmc5843_test_single",
-        "hmc5843_loop",
-        "hmc5843_get_info",
-        "hmc5843_test_bias",
-        "free_intern",
-        "free_extern",
-        "cpu_reset_handler",
-        "ps_handler",
-        "peek_handler",
-        "poke_handler",
-    };
+    private static final String GS_COMMAND_REGISTER_FUNCTION_NAME = "gs_command_register";
+    private static final String DYNAMIC_FLOW_BOOKMARK_TYPE = "DynamicFlow";
+    private static final String INDIRECT_FLOW_BOOKMARK_CATEGORY = "IndirectFlowCovered";
+    private static final String INDIRECT_FLOW_SITES_FILENAME = "indirect_flow_sites.tsv";
+    private static final String INDIRECT_FLOW_SUMMARY_FILENAME = "indirect_flow_summary.txt";
+    private static final int GS_COMMAND_T_SIZE = 36;
+    private static final int GS_COMMAND_HANDLER_OFFSET = 12;
+    private static final int GS_COMMAND_CHAIN_LIST_OFFSET = 20;
+    private static final int GS_COMMAND_CHAIN_COUNT_OFFSET = 24;
+    private static final long MAX_GS_COMMAND_CHAIN_COUNT = 4096;
     private static final long INTERRUPT_ENTRY_ADDRESS = 0x8005ab20L;
     private static final long INTERRUPT_EXIT_ADDRESS = 0x8005ab42L;
     private static final int HEADER_HEIGHT = 60;
@@ -179,9 +177,10 @@ public class CallGraphBuilder extends GhidraScript {
     private final Map<String, Integer> reachableSeedOrder = new HashMap<>();
     private final Map<String, String> layoutVertexOwnerGroup = new HashMap<>();
     private final Map<String, Integer> layoutGroupOrder = new HashMap<>();
+    private Set<String> coverageExcludedVertexIds = new TreeSet<>();
     private boolean staticOnlyMode;
     private String outputSubdir;
-    private Function cachedThreadCreateFunction;
+    private final Map<String, Integer> threadCreateEntryInputIndexes = new HashMap<>();
     private Function cachedScallYieldFunction;
 
     private void parseScriptArgs() {
@@ -216,21 +215,30 @@ public class CallGraphBuilder extends GhidraScript {
     protected void run() throws Exception {
         parseScriptArgs();
         List<Function> functions = getAllFunctions();
-        cachedThreadCreateFunction = findNamedFunction(functions, THREAD_CREATE_FUNCTION_NAME);
+        threadCreateEntryInputIndexes.clear();
+        cacheThreadCreateFunction(functions, THREAD_CREATE_FUNCTION_NAME, 2);
+        cacheThreadCreateFunction(functions, X_TASK_CREATE_FUNCTION_NAME, 1);
         cachedScallYieldFunction = findNamedFunction(functions, SCALL_YIELD_FUNCTION_NAME);
-        LayoutGrouping cmdLayoutGrouping = buildCmdLayoutGrouping(functions);
+        Set<String> commandHandlerFunctionIds = collectRegisteredCommandHandlerFunctionIds(functions);
+        LayoutGrouping cmdLayoutGrouping = buildCmdLayoutGrouping(functions, commandHandlerFunctionIds);
         AttributedGraph staticGraph = createGraph("Static Call Graph");
         vertexCache.clear();
         buildCallGraph(staticGraph, functions);
-        Set<String> coverageExcludedVertexIds = collectCoverageExcludedVertexIds(functions);
+        coverageExcludedVertexIds = collectCoverageExcludedVertexIds(cmdLayoutGrouping);
         Set<String> staticEdgeKeys = collectCoverableEdgeKeys(staticGraph, coverageExcludedVertexIds);
         coverableStaticNodeCount = countCoverableVertices(staticGraph, coverageExcludedVertexIds);
         coverableStaticEdgeCount = staticEdgeKeys.size();
 
-        AttributedGraph reachableGraph = createGraph("Main-Reachable Call Graph");
+        AttributedGraph reachableGraph = createGraph("Entry-Reachable Call Graph");
         vertexCache.clear();
         buildCallGraph(reachableGraph, functions);
-        highlightReachableFromMain(reachableGraph, functions);
+        highlightReachableFromProgramEntry(reachableGraph, functions);
+        LayoutGrouping reachableWithCmdGrouping = buildCmdAppendedGrouping(
+            reachableGraph,
+            reachableVertexOwnerSeed,
+            reachableSeedOrder,
+            cmdLayoutGrouping
+        );
         LayoutGrouping staticWithCmdGrouping = buildCmdAppendedGrouping(
             staticGraph,
             reachableVertexOwnerSeed,
@@ -249,10 +257,13 @@ public class CallGraphBuilder extends GhidraScript {
             reachableVertexColorOverrides,
             reachableEdgeColorOverrides
         );
+        int reachableNonExcludedNodeCount =
+            countVerticesOutsideGroup(reachableGraph, reachableWithCmdGrouping, "~cmd");
         Path reachablePngPath = writePngFile(
             reachableGraph,
-            "Main-Reachable Call Graph",
+            "Entry-Reachable Call Graph",
             "nodes=" + reachableGraph.getVertexCount() +
+            " nonExcludedNodes=" + reachableNonExcludedNodeCount +
             " edges=" + reachableGraph.getEdgeCount() +
             " reachableNodes=" + reachableNodeCount +
             " reachableEdges=" + reachableEdgeCount,
@@ -260,8 +271,8 @@ public class CallGraphBuilder extends GhidraScript {
             true,
             true,
             true,
-            reachableVertexOwnerSeed,
-            reachableSeedOrder,
+            reachableWithCmdGrouping.vertexOwnerGroup,
+            reachableWithCmdGrouping.groupOrder,
             reachableVertexColorOverrides,
             reachableEdgeColorOverrides,
             null
@@ -288,9 +299,24 @@ public class CallGraphBuilder extends GhidraScript {
             staticLayout
         );
 
+        IndirectFlowCoverage indirectFlowCoverage = collectIndirectFlowCoverage(
+            functions,
+            cmdLayoutGrouping
+        );
+        Path indirectSitesPath = writeIndirectFlowSitesFile(indirectFlowCoverage);
+        Path indirectSummaryPath = writeIndirectFlowSummaryFile(indirectFlowCoverage);
+
         println("Program: " + getProgramDisplayName());
         println("Functions in graph: " + staticGraph.getVertexCount());
+        println("Command handler exclude seeds: " + commandHandlerFunctionIds.size());
+        println("Excluded band functions: " + coverageExcludedVertexIds.size());
         println("Static graph edges total: " + staticGraph.getEdgeCount());
+        println("Indirect call/jump sites total: " + indirectFlowCoverage.totalCount);
+        println("Indirect call sites total: " + indirectFlowCoverage.callCount);
+        println("Indirect jump sites total: " + indirectFlowCoverage.jumpCount);
+        println("Indirect sites covered by emulation: " + indirectFlowCoverage.coveredCount);
+        println("Indirect coverage summary export: " + indirectSummaryPath.toAbsolutePath());
+        println("Indirect sites export: " + indirectSitesPath.toAbsolutePath());
         println("Static DOT export: " + staticDotPath.toAbsolutePath());
         println("Static PNG export: " + staticPngPath.toAbsolutePath());
         println("Reachable nodes highlighted: " + reachableNodeCount);
@@ -426,6 +452,11 @@ public class CallGraphBuilder extends GhidraScript {
                 AttributedVertex calleeVertex = getOrCreateVertex(graph, callee);
                 addEdgeIfAbsent(graph, callerVertex, calleeVertex);
             }
+            for (Address target : getExternalFlowSuccessorAddresses(caller, functionManager)) {
+                monitor.checkCancelled();
+                AttributedVertex targetVertex = getOrCreateAddressVertex(graph, target);
+                addEdgeIfAbsent(graph, callerVertex, targetVertex);
+            }
         }
     }
 
@@ -468,12 +499,200 @@ public class CallGraphBuilder extends GhidraScript {
                 instruction.getFallThrough()
             );
 
-            for (var flow : instruction.getFlows()) {
+            for (Address flow : getInstructionFlowTargets(instruction)) {
                 addSuccessorIfDifferentFunction(successors, caller, functionManager, flow);
             }
         }
 
         return successors;
+    }
+
+    private Set<Address> getExternalFlowSuccessorAddresses(
+        Function caller,
+        FunctionManager functionManager
+    ) {
+        Set<Address> successors = new TreeSet<>();
+        InstructionIterator instructions =
+            currentProgram.getListing().getInstructions(caller.getBody(), true);
+
+        while (instructions.hasNext() && !monitor.isCancelled()) {
+            Instruction instruction = instructions.next();
+            for (Address flow : getInstructionFlowTargets(instruction)) {
+                if (flow == null) {
+                    continue;
+                }
+
+                if (functionManager.getFunctionContaining(flow) == null) {
+                    successors.add(flow);
+                }
+            }
+        }
+
+        return successors;
+    }
+
+    private Set<Address> getInstructionFlowTargets(Instruction instruction) {
+        Set<Address> targets = new TreeSet<>();
+        for (Address flow : instruction.getFlows()) {
+            if (flow != null) {
+                targets.add(flow);
+            }
+        }
+        for (Reference reference :
+            currentProgram.getReferenceManager().getFlowReferencesFrom(instruction.getAddress())) {
+            Address target = reference.getToAddress();
+            if (target != null) {
+                targets.add(target);
+            }
+        }
+        return targets;
+    }
+
+    private IndirectFlowCoverage collectIndirectFlowCoverage(
+        List<Function> functions,
+        LayoutGrouping excludedGrouping
+    ) {
+        IndirectFlowCoverage coverage = new IndirectFlowCoverage();
+
+        for (Function function : functions) {
+            String functionId = function.getEntryPoint().toString();
+            boolean excludedFromDiff =
+                "~cmd".equals(excludedGrouping.vertexOwnerGroup.get(functionId));
+            InstructionIterator instructions =
+                currentProgram.getListing().getInstructions(function.getBody(), true);
+            while (instructions.hasNext() && !monitor.isCancelled()) {
+                Instruction instruction = instructions.next();
+                FlowType flowType = instruction.getFlowType();
+                if (!isIndirectCallOrJump(instruction)) {
+                    continue;
+                }
+
+                String kind = flowType.isCall() ? "call" : "jump";
+                boolean covered = hasDynamicFlowBookmark(instruction);
+                Set<Address> targets = getInstructionFlowTargets(instruction);
+                coverage.add(new IndirectFlowSite(
+                    instruction.getAddress(),
+                    kind,
+                    instruction.getMnemonicString(),
+                    function.getName(),
+                    covered,
+                    targets,
+                    excludedFromDiff
+                ));
+            }
+        }
+
+        return coverage;
+    }
+
+    private boolean isIndirectCallOrJump(Instruction instruction) {
+        FlowType flowType = instruction.getFlowType();
+        return flowType != null &&
+            flowType.isComputed() &&
+            (flowType.isCall() || flowType.isJump()) &&
+            hasRegisterOperandWithoutScalarTarget(instruction);
+    }
+
+    private boolean hasRegisterOperandWithoutScalarTarget(Instruction instruction) {
+        boolean hasRegisterOperand = false;
+        boolean hasScalarOperand = false;
+
+        for (int operandIndex = 0; operandIndex < instruction.getNumOperands(); operandIndex++) {
+            Object[] operandObjects = instruction.getOpObjects(operandIndex);
+            for (Object operandObject : operandObjects) {
+                if (operandObject == null) {
+                    continue;
+                }
+
+                String className = operandObject.getClass().getSimpleName();
+                if (className.contains("Register")) {
+                    hasRegisterOperand = true;
+                } else if (className.contains("Scalar")) {
+                    hasScalarOperand = true;
+                }
+            }
+        }
+
+        return hasRegisterOperand && !hasScalarOperand;
+    }
+
+    private boolean hasDynamicFlowBookmark(Instruction instruction) {
+        return currentProgram.getBookmarkManager().getBookmark(
+            instruction.getAddress(),
+            DYNAMIC_FLOW_BOOKMARK_TYPE,
+            INDIRECT_FLOW_BOOKMARK_CATEGORY
+        ) != null;
+    }
+
+    private Path writeIndirectFlowSitesFile(IndirectFlowCoverage coverage) throws IOException {
+        Path outPath = getOutputPath(INDIRECT_FLOW_SITES_FILENAME);
+        Files.createDirectories(outPath.getParent());
+
+        try (PrintWriter writer = new PrintWriter(Files.newBufferedWriter(outPath))) {
+            writer.println("address\tkind\tmnemonic\tfunction\tcovered_by_emulation\ttargets\texcluded");
+            for (IndirectFlowSite site : coverage.sites) {
+                writer.printf(
+                    "%s\t%s\t%s\t%s\t%s\t%s\t%s%n",
+                    site.address,
+                    site.kind,
+                    escapeTsv(site.mnemonic),
+                    escapeTsv(site.functionName),
+                    site.coveredByEmulation,
+                    escapeTsv(joinAddresses(site.targets)),
+                    site.excludedFromDiff
+                );
+            }
+        }
+
+        return outPath;
+    }
+
+    private Path writeIndirectFlowSummaryFile(IndirectFlowCoverage coverage) throws IOException {
+        Path outPath = getOutputPath(INDIRECT_FLOW_SUMMARY_FILENAME);
+        Files.createDirectories(outPath.getParent());
+
+        try (PrintWriter writer = new PrintWriter(Files.newBufferedWriter(outPath))) {
+            writer.println("indirect_sites_total=" + coverage.totalCount);
+            writer.println("indirect_calls_total=" + coverage.callCount);
+            writer.println("indirect_jumps_total=" + coverage.jumpCount);
+            writer.println("covered_by_emulation=" + coverage.coveredCount);
+            writer.println("covered_calls_by_emulation=" + coverage.coveredCallCount);
+            writer.println("covered_jumps_by_emulation=" + coverage.coveredJumpCount);
+            writer.println("excluded_from_diff=" + coverage.excludedFromDiffCount);
+            writer.println("coverage_percent=" + coverage.coveragePercent());
+
+            writer.println();
+            writer.println("[indirect_sites]");
+            for (IndirectFlowSite site : coverage.sites) {
+                writer.printf(
+                    "%s %s %s %s covered=%s excluded=%s targets=%s%n",
+                    site.address,
+                    site.kind,
+                    site.mnemonic,
+                    site.functionName,
+                    site.coveredByEmulation,
+                    site.excludedFromDiff,
+                    joinAddresses(site.targets)
+                );
+            }
+        }
+
+        return outPath;
+    }
+
+    private String joinAddresses(Set<Address> addresses) {
+        List<String> values = new ArrayList<>();
+        for (Address address : addresses) {
+            values.add(address.toString());
+        }
+        return String.join(",", values);
+    }
+
+    private String escapeTsv(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replace("\t", " ").replace("\r", " ").replace("\n", " ");
     }
 
     private void addSuccessorIfDifferentFunction(
@@ -523,6 +742,22 @@ public class CallGraphBuilder extends GhidraScript {
         AttributedVertex vertex = graph.addVertex(vertexId, buildVertexName(function));
         vertex.setVertexType(function.isExternal() ? EXTERNAL_VERTEX_TYPE : INTERNAL_VERTEX_TYPE);
         vertex.setDescription(buildVertexDescription(function));
+        vertexCache.put(vertexId, vertex);
+        return vertex;
+    }
+
+    private AttributedVertex getOrCreateAddressVertex(AttributedGraph graph, Address address) {
+        String vertexId = "addr:" + Long.toHexString(address.getOffset());
+        AttributedVertex existing = vertexCache.get(vertexId);
+        if (existing != null) {
+            return existing;
+        }
+
+        String addressLabel = String.format("0x%08x", address.getOffset());
+        AttributedVertex vertex = graph.addVertex(vertexId, addressLabel);
+        vertex.setVertexType(EXTERNAL_VERTEX_TYPE);
+        vertex.setDescription("<html><b>" + escapeHtml(addressLabel) +
+            "</b><br/>Static flow target outside any known function</html>");
         vertexCache.put(vertexId, vertex);
         return vertex;
     }
@@ -1108,17 +1343,25 @@ public class CallGraphBuilder extends GhidraScript {
         return count;
     }
 
-    private Set<String> collectCoverageExcludedVertexIds(List<Function> functions) {
+    private int countVerticesOutsideGroup(
+        AttributedGraph graph,
+        LayoutGrouping grouping,
+        String excludedGroup
+    ) {
+        int count = 0;
+        for (AttributedVertex vertex : graph.vertexSet()) {
+            if (!excludedGroup.equals(grouping.vertexOwnerGroup.get(vertex.getId()))) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private Set<String> collectCoverageExcludedVertexIds(LayoutGrouping cmdGrouping) {
         Set<String> excludedVertexIds = new TreeSet<>();
-        LayoutGrouping cmdGrouping = buildCmdLayoutGrouping(functions);
         for (Map.Entry<String, String> entry : cmdGrouping.vertexOwnerGroup.entrySet()) {
             if ("~cmd".equals(entry.getValue())) {
                 excludedVertexIds.add(entry.getKey());
-            }
-        }
-        for (Function function : functions) {
-            if (shouldExcludeFromCoverage(function)) {
-                excludedVertexIds.add(function.getEntryPoint().toString());
             }
         }
         return excludedVertexIds;
@@ -1128,11 +1371,7 @@ public class CallGraphBuilder extends GhidraScript {
         if (vertex == null) {
             return false;
         }
-        Function function = resolveFunctionByVertexId(vertex.getId());
-        if (function == null) {
-            return false;
-        }
-        return shouldExcludeFromCoverage(function);
+        return coverageExcludedVertexIds.contains(vertex.getId());
     }
 
     private Function resolveFunctionByVertexId(String vertexId) {
@@ -1141,6 +1380,257 @@ public class CallGraphBuilder extends GhidraScript {
         }
         try {
             return currentProgram.getFunctionManager().getFunctionAt(toAddr(vertexId));
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private Set<String> collectRegisteredCommandHandlerFunctionIds(List<Function> functions) throws Exception {
+        Set<String> commandHandlerFunctionIds = new TreeSet<>();
+        Function commandRegisterFunction = findNamedFunction(functions, GS_COMMAND_REGISTER_FUNCTION_NAME);
+        if (commandRegisterFunction == null) {
+            println("Command handler discovery skipped; function not found: " + GS_COMMAND_REGISTER_FUNCTION_NAME);
+            return commandHandlerFunctionIds;
+        }
+
+        FunctionManager functionManager = currentProgram.getFunctionManager();
+        DecompInterface decompiler = new DecompInterface();
+        try {
+            decompiler.setOptions(new DecompileOptions());
+            if (!decompiler.openProgram(currentProgram)) {
+                println("Command handler discovery skipped; decompiler unavailable: " + decompiler.getLastMessage());
+                return commandHandlerFunctionIds;
+            }
+
+            for (Reference reference :
+                currentProgram.getReferenceManager().getReferencesTo(commandRegisterFunction.getEntryPoint())) {
+                if (!reference.getReferenceType().isCall()) {
+                    continue;
+                }
+
+                Function caller = functionManager.getFunctionContaining(reference.getFromAddress());
+                if (caller == null) {
+                    continue;
+                }
+
+                GsCommandRegisterCall registerCall = resolveGsCommandRegisterCall(
+                    caller,
+                    reference.getFromAddress(),
+                    commandRegisterFunction,
+                    functionManager,
+                    decompiler
+                );
+                if (registerCall == null || registerCall.commandList == null || registerCall.count <= 0) {
+                    continue;
+                }
+
+                collectCommandHandlersFromList(
+                    registerCall.commandList,
+                    registerCall.count,
+                    commandHandlerFunctionIds,
+                    new TreeSet<>()
+                );
+            }
+        } finally {
+            decompiler.dispose();
+        }
+
+        return commandHandlerFunctionIds;
+    }
+
+    private GsCommandRegisterCall resolveGsCommandRegisterCall(
+        Function caller,
+        Address callsite,
+        Function commandRegisterFunction,
+        FunctionManager functionManager,
+        DecompInterface decompiler
+    ) {
+        DecompileResults results = decompiler.decompileFunction(caller, 30, monitor);
+        if (results == null || !results.decompileCompleted()) {
+            return null;
+        }
+
+        HighFunction highFunction = results.getHighFunction();
+        if (highFunction == null || highFunction.getPcodeOps() == null) {
+            return null;
+        }
+
+        var opIterator = highFunction.getPcodeOps();
+        while (opIterator.hasNext()) {
+            PcodeOpAST callOp = opIterator.next();
+            if (callOp.getOpcode() != PcodeOp.CALL ||
+                callOp.getNumInputs() < 3 ||
+                !callsite.equals(callOp.getSeqnum().getTarget())) {
+                continue;
+            }
+
+            Function calledFunction = resolveCalledFunction(callOp.getInput(0), functionManager);
+            if (calledFunction == null ||
+                !commandRegisterFunction.getEntryPoint().equals(calledFunction.getEntryPoint())) {
+                continue;
+            }
+
+            Address commandList = resolveAddressFromVarnode(callOp.getInput(1), new TreeSet<>());
+            Long count = resolveLongFromVarnode(callOp.getInput(2), new TreeSet<>());
+            if (commandList == null || count == null) {
+                return null;
+            }
+            return new GsCommandRegisterCall(commandList, count);
+        }
+
+        return null;
+    }
+
+    private void collectCommandHandlersFromList(
+        Address commandList,
+        long count,
+        Set<String> commandHandlerFunctionIds,
+        Set<String> activeLists
+    ) {
+        if (commandList == null || count <= 0 || count > MAX_GS_COMMAND_CHAIN_COUNT) {
+            return;
+        }
+
+        String activeListKey = commandList + ":" + count;
+        if (!activeLists.add(activeListKey)) {
+            return;
+        }
+
+        FunctionManager functionManager = currentProgram.getFunctionManager();
+        for (long index = 0; index < count && !monitor.isCancelled(); index++) {
+            Address commandAddress = commandList.add(index * GS_COMMAND_T_SIZE);
+
+            Address handlerAddress = readPointer(commandAddress.add(GS_COMMAND_HANDLER_OFFSET));
+            if (handlerAddress != null) {
+                Function handler = functionManager.getFunctionAt(handlerAddress);
+                if (handler == null) {
+                    handler = functionManager.getFunctionContaining(handlerAddress);
+                }
+                if (handler != null) {
+                    commandHandlerFunctionIds.add(handler.getEntryPoint().toString());
+                }
+            }
+
+            Address chainList = readPointer(commandAddress.add(GS_COMMAND_CHAIN_LIST_OFFSET));
+            Long chainCount = readUnsignedInt(commandAddress.add(GS_COMMAND_CHAIN_COUNT_OFFSET));
+            if (chainList != null && chainCount != null && chainCount > 0) {
+                collectCommandHandlersFromList(
+                    chainList,
+                    chainCount,
+                    commandHandlerFunctionIds,
+                    activeLists
+                );
+            }
+        }
+
+        activeLists.remove(activeListKey);
+    }
+
+    private Address resolveAddressFromVarnode(Varnode varnode, Set<String> seen) {
+        Long value = resolveLongFromVarnode(varnode, seen);
+        if (value == null || value == 0) {
+            return null;
+        }
+        try {
+            return toAddr(value);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private Long resolveLongFromVarnode(Varnode varnode, Set<String> seen) {
+        if (varnode == null || !seen.add(varnode.toString())) {
+            return null;
+        }
+
+        if (varnode.isConstant()) {
+            return varnode.getOffset();
+        }
+        if (varnode.getAddress() != null && varnode.getAddress().isMemoryAddress()) {
+            return varnode.getAddress().getOffset();
+        }
+
+        PcodeOp definition = varnode.getDef();
+        if (definition == null) {
+            return null;
+        }
+
+        switch (definition.getOpcode()) {
+            case PcodeOp.COPY:
+            case PcodeOp.CAST:
+            case PcodeOp.INDIRECT:
+                return resolveLongFromVarnode(definition.getInput(0), seen);
+            case PcodeOp.INT_ADD:
+            case PcodeOp.PTRADD:
+            case PcodeOp.PTRSUB:
+                return resolveAdditiveConstant(definition, seen, false);
+            case PcodeOp.INT_SUB:
+                return resolveAdditiveConstant(definition, seen, true);
+            case PcodeOp.MULTIEQUAL:
+                return resolveUniqueLongFromInputs(definition, seen);
+            default:
+                return null;
+        }
+    }
+
+    private Long resolveAdditiveConstant(PcodeOp definition, Set<String> seen, boolean subtract) {
+        if (definition.getNumInputs() < 2) {
+            return null;
+        }
+
+        Long base = resolveLongFromVarnode(definition.getInput(0), new TreeSet<>(seen));
+        Long addend = resolveLongFromVarnode(definition.getInput(1), new TreeSet<>(seen));
+        if (base == null || addend == null) {
+            return null;
+        }
+
+        if (definition.getOpcode() == PcodeOp.PTRADD && definition.getNumInputs() > 2) {
+            Long elementSize = resolveLongFromVarnode(definition.getInput(2), new TreeSet<>(seen));
+            if (elementSize != null) {
+                addend *= elementSize;
+            }
+        }
+
+        return subtract ? base - addend : base + addend;
+    }
+
+    private Long resolveUniqueLongFromInputs(PcodeOp definition, Set<String> seen) {
+        Long resolved = null;
+        for (int i = 0; i < definition.getNumInputs(); i++) {
+            Long candidate = resolveLongFromVarnode(definition.getInput(i), new TreeSet<>(seen));
+            if (candidate == null) {
+                continue;
+            }
+            if (resolved == null) {
+                resolved = candidate;
+                continue;
+            }
+            if (!resolved.equals(candidate)) {
+                return null;
+            }
+        }
+        return resolved;
+    }
+
+    private Address readPointer(Address address) {
+        Long value = readUnsignedInt(address);
+        if (value == null || value == 0) {
+            return null;
+        }
+        try {
+            return toAddr(value);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private Long readUnsignedInt(Address address) {
+        try {
+            Memory memory = currentProgram.getMemory();
+            if (!memory.contains(address)) {
+                return null;
+            }
+            return memory.getInt(address) & 0xffffffffL;
         } catch (Exception ignored) {
             return null;
         }
@@ -1159,7 +1649,7 @@ public class CallGraphBuilder extends GhidraScript {
         return coveredEdges + "/" + totalEdges + " (" + COVERAGE_FORMAT.format(coveragePercent) + "%)";
     }
 
-    private void highlightReachableFromMain(AttributedGraph graph, List<Function> functions) throws Exception {
+    private void highlightReachableFromProgramEntry(AttributedGraph graph, List<Function> functions) throws Exception {
         reachableNodeCount = 0;
         reachableEdgeCount = 0;
         threadEntrySeedLog.clear();
@@ -1169,22 +1659,35 @@ public class CallGraphBuilder extends GhidraScript {
         reachableVertexOwnerSeed.clear();
         reachableSeedOrder.clear();
 
-        Function mainFunction = findMainFunction(functions);
-        if (mainFunction == null) {
-            println("No function named 'main' found; reachable graph was generated without highlights.");
+        FunctionManager functionManager = currentProgram.getFunctionManager();
+        ProgramEntryResolver.ResolvedStartAddress resolvedStart =
+            ProgramEntryResolver.resolveStartAddress(this, (message, detailLevel) -> println(message));
+        Function startFunction = functionManager.getFunctionContaining(resolvedStart.getAddress());
+        if (startFunction == null) {
+            println(
+                "No function contains resolved program entry " +
+                resolvedStart.getAddress() +
+                " (" + resolvedStart.getSource() + "); reachable graph was generated without highlights."
+            );
             return;
         }
+        println(
+            "Resolved call graph reachable root from " +
+            resolvedStart.getSource() +
+            ": " +
+            startFunction.getName() +
+            " @ " +
+            startFunction.getEntryPoint()
+        );
 
         Set<String> reachableVertices = new TreeSet<>();
         Set<String> reachableEdges = new TreeSet<>();
         List<Function> worklist = new ArrayList<>();
         Set<String> queuedFunctionIds = new TreeSet<>();
         Map<String, Function> entrySeedFunctions = new HashMap<>();
-        FunctionManager functionManager = currentProgram.getFunctionManager();
-        Function threadCreateFunction = cachedThreadCreateFunction;
-        worklist.add(mainFunction);
-        queuedFunctionIds.add(mainFunction.getEntryPoint().toString());
-        entrySeedFunctions.put(mainFunction.getEntryPoint().toString(), mainFunction);
+        worklist.add(startFunction);
+        queuedFunctionIds.add(startFunction.getEntryPoint().toString());
+        entrySeedFunctions.put(startFunction.getEntryPoint().toString(), startFunction);
 
         DecompInterface decompiler = new DecompInterface();
         boolean decompilerReady = false;
@@ -1222,7 +1725,7 @@ public class CallGraphBuilder extends GhidraScript {
 
                 for (Function threadEntry : findThreadEntryFunctions(
                     current,
-                    threadCreateFunction,
+                    threadCreateEntryInputIndexes,
                     functionManager,
                     decompiler,
                     decompilerReady
@@ -1245,15 +1748,16 @@ public class CallGraphBuilder extends GhidraScript {
 
         reachableNodeCount = reachableVertices.size();
         reachableEdgeCount = reachableEdges.size();
-        applyEntrypointExclusiveColors(graph, entrySeedFunctions, functionManager);
+        applyEntrypointExclusiveColors(graph, entrySeedFunctions, functionManager, startFunction);
     }
 
     private void applyEntrypointExclusiveColors(
         AttributedGraph graph,
         Map<String, Function> entrySeedFunctions,
-        FunctionManager functionManager
+        FunctionManager functionManager,
+        Function primarySeedFunction
     ) throws Exception {
-        Map<String, String> entrySeedColors = assignEntrypointColors(entrySeedFunctions);
+        Map<String, String> entrySeedColors = assignEntrypointColors(entrySeedFunctions, primarySeedFunction);
         Map<String, Set<String>> seedToVertices = new HashMap<>();
         Map<String, Set<String>> seedToEdges = new HashMap<>();
 
@@ -1315,18 +1819,20 @@ public class CallGraphBuilder extends GhidraScript {
         }
     }
 
-    private Map<String, String> assignEntrypointColors(Map<String, Function> entrySeedFunctions) {
+    private Map<String, String> assignEntrypointColors(
+        Map<String, Function> entrySeedFunctions,
+        Function primarySeedFunction
+    ) {
         Map<String, String> colors = new HashMap<>();
         List<Function> orderedSeeds = sortFunctions(entrySeedFunctions.values());
-        Function mainFunction = findMainFunction(orderedSeeds);
         int paletteIndex = 0;
 
-        if (mainFunction != null) {
+        if (primarySeedFunction != null) {
             String color = ENTRYPOINT_COLOR_PALETTE[paletteIndex % ENTRYPOINT_COLOR_PALETTE.length];
-            colors.put(mainFunction.getEntryPoint().toString(), color);
-            reachableSeedOrder.put(mainFunction.getEntryPoint().toString(), paletteIndex);
+            colors.put(primarySeedFunction.getEntryPoint().toString(), color);
+            reachableSeedOrder.put(primarySeedFunction.getEntryPoint().toString(), paletteIndex);
             entrypointColorLog.add(
-                mainFunction.getName() + " @ " + mainFunction.getEntryPoint() + " = " + color
+                primarySeedFunction.getName() + " @ " + primarySeedFunction.getEntryPoint() + " = " + color
             );
             paletteIndex++;
         }
@@ -1346,7 +1852,10 @@ public class CallGraphBuilder extends GhidraScript {
         return colors;
     }
 
-    private LayoutGrouping buildCmdLayoutGrouping(List<Function> functions) {
+    private LayoutGrouping buildCmdLayoutGrouping(
+        List<Function> functions,
+        Set<String> commandHandlerFunctionIds
+    ) {
         LayoutGrouping grouping = new LayoutGrouping();
         grouping.groupOrder.put("~normal", 0);
         grouping.groupOrder.put("~cmd", 1);
@@ -1378,7 +1887,7 @@ public class CallGraphBuilder extends GhidraScript {
                     continue;
                 }
 
-                if (isCmdSeedFunction(function)) {
+                if (isCmdSeedFunction(function, commandHandlerFunctionIds)) {
                     cmdClosure.add(functionId);
                     changed = true;
                     continue;
@@ -1399,29 +1908,8 @@ public class CallGraphBuilder extends GhidraScript {
         return grouping;
     }
 
-    private boolean isCmdSeedFunction(Function function) {
-        if (shouldExcludeFromCmdBand(function)) {
-            return false;
-        }
-        String functionName = function.getName();
-        for (String prefix : EXCLUDED_FUNCTION_PREFIXES) {
-            if (functionName.startsWith(prefix)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean shouldExcludeFromCoverage(Function function) {
-        return shouldExcludeFromCmdBand(function);
-    }
-
-    private boolean shouldExcludeFromCmdBand(Function function) {
-        String functionName = function.getName();
-        String functionId = function.getEntryPoint().toString();
-
-        // Add future opt-out rules here when a cmd_-prefixed function should stay out of the cmd band.
-        return false;
+    private boolean isCmdSeedFunction(Function function, Set<String> commandHandlerFunctionIds) {
+        return commandHandlerFunctionIds.contains(function.getEntryPoint().toString());
     }
 
     private LayoutGrouping buildCmdAppendedGrouping(
@@ -1505,23 +1993,6 @@ public class CallGraphBuilder extends GhidraScript {
         }
     }
 
-    private Function findMainFunction(List<Function> functions) {
-        Function fallback = null;
-        for (Function function : functions) {
-            if (!"main".equals(function.getName())) {
-                continue;
-            }
-
-            if (!function.isExternal() && !function.isThunk()) {
-                return function;
-            }
-            if (fallback == null) {
-                fallback = function;
-            }
-        }
-        return fallback;
-    }
-
     private Function findNamedFunction(List<Function> functions, String name) {
         Function fallback = null;
         for (Function function : functions) {
@@ -1538,15 +2009,28 @@ public class CallGraphBuilder extends GhidraScript {
         return fallback;
     }
 
+    private void cacheThreadCreateFunction(
+        List<Function> functions,
+        String functionName,
+        int entryInputIndex
+    ) {
+        Function function = findNamedFunction(functions, functionName);
+        if (function == null) {
+            println("Thread entry discovery source not found: " + functionName);
+            return;
+        }
+        threadCreateEntryInputIndexes.put(function.getEntryPoint().toString(), entryInputIndex);
+    }
+
     private List<Function> findThreadEntryFunctions(
         Function caller,
-        Function threadCreateFunction,
+        Map<String, Integer> entryInputIndexesByCreateFunctionId,
         FunctionManager functionManager,
         DecompInterface decompiler,
         boolean decompilerReady
     ) {
         List<Function> entryFunctions = new ArrayList<>();
-        if (caller == null || threadCreateFunction == null || !decompilerReady) {
+        if (caller == null || entryInputIndexesByCreateFunctionId.isEmpty() || !decompilerReady) {
             return entryFunctions;
         }
 
@@ -1564,18 +2048,22 @@ public class CallGraphBuilder extends GhidraScript {
         var opIterator = highFunction.getPcodeOps();
         while (opIterator.hasNext()) {
             PcodeOpAST callOp = opIterator.next();
-            if (callOp.getOpcode() != PcodeOp.CALL || callOp.getNumInputs() < 3) {
+            if (callOp.getOpcode() != PcodeOp.CALL) {
                 continue;
             }
 
             Function calledFunction = resolveCalledFunction(callOp.getInput(0), functionManager);
-            if (calledFunction == null ||
-                !threadCreateFunction.getEntryPoint().equals(calledFunction.getEntryPoint())) {
+            if (calledFunction == null) {
+                continue;
+            }
+            Integer entryInputIndex =
+                entryInputIndexesByCreateFunctionId.get(calledFunction.getEntryPoint().toString());
+            if (entryInputIndex == null || callOp.getNumInputs() <= entryInputIndex) {
                 continue;
             }
 
             Function entryFunction = resolveFunctionFromVarnode(
-                callOp.getInput(2),
+                callOp.getInput(entryInputIndex),
                 functionManager,
                 new TreeSet<>()
             );
@@ -2546,6 +3034,84 @@ public class CallGraphBuilder extends GhidraScript {
         private BandLabel(String text, int y) {
             this.text = text;
             this.y = y;
+        }
+    }
+
+    private static final class IndirectFlowCoverage {
+        private final List<IndirectFlowSite> sites = new ArrayList<>();
+        private int totalCount;
+        private int callCount;
+        private int jumpCount;
+        private int coveredCount;
+        private int coveredCallCount;
+        private int coveredJumpCount;
+        private int excludedFromDiffCount;
+
+        private void add(IndirectFlowSite site) {
+            sites.add(site);
+            totalCount++;
+            if (site.excludedFromDiff) {
+                excludedFromDiffCount++;
+            }
+            if ("call".equals(site.kind)) {
+                callCount++;
+                if (site.coveredByEmulation) {
+                    coveredCallCount++;
+                }
+            } else {
+                jumpCount++;
+                if (site.coveredByEmulation) {
+                    coveredJumpCount++;
+                }
+            }
+            if (site.coveredByEmulation) {
+                coveredCount++;
+            }
+        }
+
+        private String coveragePercent() {
+            if (totalCount == 0) {
+                return "0.0";
+            }
+            return COVERAGE_FORMAT.format((coveredCount * 100.0) / totalCount);
+        }
+    }
+
+    private static final class IndirectFlowSite {
+        private final Address address;
+        private final String kind;
+        private final String mnemonic;
+        private final String functionName;
+        private final boolean coveredByEmulation;
+        private final Set<Address> targets;
+        private final boolean excludedFromDiff;
+
+        private IndirectFlowSite(
+            Address address,
+            String kind,
+            String mnemonic,
+            String functionName,
+            boolean coveredByEmulation,
+            Set<Address> targets,
+            boolean excludedFromDiff
+        ) {
+            this.address = address;
+            this.kind = kind;
+            this.mnemonic = mnemonic;
+            this.functionName = functionName;
+            this.coveredByEmulation = coveredByEmulation;
+            this.targets = targets;
+            this.excludedFromDiff = excludedFromDiff;
+        }
+    }
+
+    private static final class GsCommandRegisterCall {
+        private final Address commandList;
+        private final long count;
+
+        private GsCommandRegisterCall(Address commandList, long count) {
+            this.commandList = commandList;
+            this.count = count;
         }
     }
 

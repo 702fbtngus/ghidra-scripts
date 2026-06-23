@@ -4,8 +4,11 @@ import argparse
 import binascii
 from collections import Counter
 import contextlib
+import os
 from pathlib import Path
+import signal
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -13,6 +16,9 @@ import time
 HOST = "127.0.0.1"
 PORT = 10001
 LOG_SOURCES = ("ghidra", "qemu")
+CLIENT_DIR = Path(__file__).resolve().parent
+REPO_DIR = CLIENT_DIR.parent
+QEMU_BUILD_DIR = Path.home() / "QEMU-RANDEV" / "build"
 
 # Keep commands that are backed by both the Java device emulation and the
 # firmware-side randev_sys_run_* handlers.
@@ -87,6 +93,7 @@ DEFAULT_DEVICE_ORDER = ["utx", "vrx", "eps", "uvant", "adcs", "hstx"]
 DEFAULT_BATCH_SIZE = 30
 DEFAULT_BATCH_TIMEOUT_SECONDS = 0.0
 VRX_REMOVE_FRAME_KEY = (0x29, 0x24)
+RF_COMMAND_REPLY_SIZE = 235
 
 
 class TeeStream:
@@ -134,7 +141,12 @@ def parse_args():
         "--source",
         choices=LOG_SOURCES,
         default="ghidra",
-        help="Label for the dump log file name (default: %(default)s)",
+        help="Target emulator/log source to use; launches this emulator unless --external-emulator is set (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--external-emulator",
+        action="store_true",
+        help="Do not launch an emulator; connect to an already running --source target",
     )
     parser.add_argument(
         "--device",
@@ -169,7 +181,7 @@ def to_hex(b: bytes) -> str:
 
 
 def get_log_path(source_name: str) -> Path:
-    return Path(__file__).with_name(f"response_{source_name.lower()}.log")
+    return CLIENT_DIR / f"response_{source_name.lower()}.log"
 
 
 def get_hex_commands(device_name: str):
@@ -219,10 +231,11 @@ def get_effective_batch_payloads(payloads):
 
 
 class BatchReplyTracker:
-    def __init__(self):
+    def __init__(self, timing_tracker=None):
         self.condition = threading.Condition()
         self.expected = Counter()
         self.received = Counter()
+        self.timing_tracker = timing_tracker
 
     def start_batch(self, payloads):
         with self.condition:
@@ -243,6 +256,8 @@ class BatchReplyTracker:
                 return None
 
             self.received[response_key] += 1
+            if self.timing_tracker is not None:
+                self.timing_tracker.record_reply()
             matched = self.received[response_key]
             total = self.expected[response_key]
             remaining = self.remaining_locked()
@@ -271,6 +286,44 @@ class BatchReplyTracker:
         return +(self.expected - self.received)
 
 
+class TimingTracker:
+    def __init__(self, emulator_start_time=None):
+        self.lock = threading.Lock()
+        self.emulator_start_time = emulator_start_time
+        self.first_send_time = None
+        self.last_reply_time = None
+
+    def record_send(self):
+        now = time.monotonic()
+        with self.lock:
+            if self.first_send_time is None:
+                self.first_send_time = now
+
+    def record_reply(self):
+        now = time.monotonic()
+        with self.lock:
+            self.last_reply_time = now
+
+    def elapsed(self):
+        with self.lock:
+            if self.first_send_time is None or self.last_reply_time is None:
+                return None
+            return self.last_reply_time - self.first_send_time
+
+    def snapshot(self):
+        with self.lock:
+            return self.emulator_start_time, self.first_send_time, self.last_reply_time
+
+
+def iter_reply_frames(data: bytes):
+    if len(data) > RF_COMMAND_REPLY_SIZE and len(data) % RF_COMMAND_REPLY_SIZE == 0:
+        for offset in range(0, len(data), RF_COMMAND_REPLY_SIZE):
+            yield data[offset:offset + RF_COMMAND_REPLY_SIZE]
+        return
+
+    yield data
+
+
 def recv_loop(sock: socket.socket, disconnected: threading.Event, reply_tracker: BatchReplyTracker):
     try:
         while True:
@@ -282,13 +335,14 @@ def recv_loop(sock: socket.socket, disconnected: threading.Event, reply_tracker:
                     reply_tracker.condition.notify_all()
                 return
             print(f"\nRecv({len(data)}): {to_hex(data)}")
-            match = reply_tracker.record_response(data)
-            if match is not None:
-                command_key, matched, total, remaining = match
-                print(
-                    f"[+] matched reply {format_command_key(command_key)} "
-                    f"({matched}/{total}, batch remaining: {remaining})"
-                )
+            for frame in iter_reply_frames(data):
+                match = reply_tracker.record_response(frame)
+                if match is not None:
+                    command_key, matched, total, remaining = match
+                    print(
+                        f"[+] matched reply {format_command_key(command_key)} "
+                        f"({matched}/{total}, batch remaining: {remaining})"
+                    )
     except OSError as e:
         print(f"\n[!] 수신 에러: {e}")
         disconnected.set()
@@ -310,7 +364,100 @@ def format_remaining(counter: Counter):
     )
 
 
-def main(args):
+def terminate_process_group(process: subprocess.Popen):
+    if process.poll() is not None:
+        return
+
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+        process.wait(timeout=5)
+    except ProcessLookupError:
+        return
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL)
+        process.wait(timeout=5)
+
+
+@contextlib.contextmanager
+def launched_emulator(emulator_name: str):
+    if emulator_name == "none":
+        yield None, None
+        return
+
+    log_handle = None
+    stdout_log_handle = None
+    process = None
+    try:
+        if emulator_name == "ghidra":
+            command = ["python3", "helper.py", "emul", "--fast", "--num-instr=5000000"]
+            log_path = CLIENT_DIR / "emulator_ghidra.log"
+            log_handle = log_path.open("w", encoding="utf-8")
+            print(f"[+] launching Ghidra emulator: {' '.join(command)}")
+            print(f"[+] emulator log: {log_path.name}")
+            emulator_start_time = time.monotonic()
+            process = subprocess.Popen(
+                command,
+                cwd=REPO_DIR,
+                stdin=subprocess.DEVNULL,
+                stdout=log_handle,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+        elif emulator_name == "qemu":
+            print(f"[+] building QEMU in {QEMU_BUILD_DIR}")
+            subprocess.run(["make"], cwd=QEMU_BUILD_DIR, check=True)
+            command = [
+                "./qemu-system-avr32",
+                "-M",
+                "nanomind-a3200",
+                "-bios",
+                "../nanomind-bsp-fast.elf",
+                "-nographic",
+                "-s",
+            ]
+            qemu_stdout_path = QEMU_BUILD_DIR / "emulator_qemu.log"
+            helperdump_path = QEMU_BUILD_DIR / "helperdump.txt"
+            stdout_log_handle = qemu_stdout_path.open("w", encoding="utf-8")
+            log_handle = helperdump_path.open("w", encoding="utf-8")
+            print(f"[+] launching QEMU emulator: {' '.join(command)}")
+            print(f"[+] qemu stdout: {qemu_stdout_path}")
+            print(f"[+] qemu stderr: {helperdump_path}")
+            emulator_start_time = time.monotonic()
+            process = subprocess.Popen(
+                command,
+                cwd=QEMU_BUILD_DIR,
+                stdin=subprocess.DEVNULL,
+                stdout=stdout_log_handle,
+                stderr=log_handle,
+                start_new_session=True,
+            )
+        else:
+            raise ValueError(f"Unsupported emulator: {emulator_name}")
+
+        print(f"[+] emulator start timestamp: {emulator_start_time:.6f}")
+        yield process, emulator_start_time
+    finally:
+        if process is not None:
+            terminate_process_group(process)
+        if log_handle is not None:
+            log_handle.close()
+        if stdout_log_handle is not None:
+            stdout_log_handle.close()
+
+
+def print_timing_summary(timing_tracker: TimingTracker):
+    emulator_start_time, first_send_time, last_reply_time = timing_tracker.snapshot()
+    if first_send_time is None or last_reply_time is None:
+        return
+
+    if emulator_start_time is not None:
+        print(f"[+] emulator start -> first packet sent: {first_send_time - emulator_start_time:.3f} seconds")
+    print(f"[+] first packet sent -> last reply received: {last_reply_time - first_send_time:.3f} seconds")
+    if emulator_start_time is not None:
+        print(f"[+] emulator start -> last reply received: {last_reply_time - emulator_start_time:.3f} seconds")
+
+
+def main(args, emulator_process=None, emulator_start_time=None):
     try:
         hex_commands = get_hex_commands(args.device)
     except ValueError as e:
@@ -332,12 +479,16 @@ def main(args):
                     s.connect((HOST, PORT))
                     break
                 except (ConnectionRefusedError, OSError):
+                    if emulator_process is not None and emulator_process.poll() is not None:
+                        print(f"[!] emulator exited before TCP connection (code: {emulator_process.returncode})")
+                        return
                     time.sleep(1)
 
             s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
             disconnected = threading.Event()
-            reply_tracker = BatchReplyTracker()
+            timing_tracker = TimingTracker(emulator_start_time)
+            reply_tracker = BatchReplyTracker(timing_tracker)
             t = threading.Thread(target=recv_loop, args=(s, disconnected, reply_tracker), daemon=True)
             t.start()
 
@@ -349,6 +500,7 @@ def main(args):
                 print(f"[+] batch {batch_index}: sending {len(batch_payloads)} commands")
 
                 for payload in batch_payloads:
+                    timing_tracker.record_send()
                     s.sendall(payload)
                     print(f"Sent({len(payload)}): {to_hex(payload)}")
                     time.sleep(0.1)
@@ -372,11 +524,18 @@ def main(args):
             if should_retry:
                 continue
 
+            print_timing_summary(timing_tracker)
+
+            if not args.external_emulator:
+                return
+
             while not disconnected.is_set():
                 time.sleep(0.1)
 
 
 if __name__ == "__main__":
     args = parse_args()
+    emulator_name = "none" if args.external_emulator else args.source
     with tee_output(get_log_path(args.source)):
-        main(args)
+        with launched_emulator(emulator_name) as (emulator_process, emulator_start_time):
+            main(args, emulator_process, emulator_start_time)

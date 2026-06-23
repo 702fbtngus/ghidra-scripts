@@ -191,9 +191,10 @@ public class TaskManager {
             if (context.currentTaskName.compareTo(newTaskName) != 0) {
                 int currentTick = cpuState.getRAMValue(0x13a0);
                 logger.println(String.format("task switched 2: %s (current tickCount: %d)", newTaskName, currentTick), 6);
-                switchTask(context.currentTaskName, newTaskName);
-                // println("current tickCount: " + currentTick, 6);
+                String oldTaskName = context.currentTaskName;
                 context.currentTaskName = newTaskName;
+                switchTask(oldTaskName, newTaskName);
+                // println("current tickCount: " + currentTick, 6);
 
             }
         }

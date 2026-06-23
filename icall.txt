@@ -1,0 +1,65 @@
+total: 59
+resolved: 10
+unresolved: 49
+
+80036d56		__sfvwrite_r	ICALL R8
+80036e86		__sfvwrite_r	ICALL R8
+80036f40		__sfvwrite_r	ICALL R8
+80038506		__srefill_r	ICALL R8
+800363fc		_fclose_r	ICALL R8
+80036514		_fflush_r	ICALL R8
+80036558		_fflush_r	ICALL R8
+800365a2		_fflush_r	ICALL R8
+80037078		_fwalk	ICALL R1
+80036ff8		_fwalk_reent	ICALL R0
+800412f6		_raise_r	ICALL R8
+80038420		_reclaim_reent	ICALL R8
+80025104		bsp_init_task	ICALL R8
+8001f5c8		call_csp_packet_handler	ICALL R6
+80028882		can_mbox_rx	ICALL R6
+80032ffa		cmd_log_mask_handler	ICALL R2
+8003301c		cmd_log_mask_handler	ICALL R3
+800311f6		command_complete	ICALL R8
+80030e78		command_execute	ICALL R8
+80030c0c		command_process	ICALL R8
+800206c6		csp_send_direct	ICALL R8
+8001f8fa		csp_sys_reboot	ICALL R8
+8001f8d4		csp_sys_shutdown	ICALL R12
+800203ae		do_csp_debug	ICALL R8
+800349a6	LAB_800349a6	Global	ICALL R8
+80031302		gs_command_execute	ICALL R6
+80030a4a		gs_command_set_output	ICALL R8
+80031276		gs_command_set_output_printf	ICALL R8
+80030a62		gs_command_wait_key	ICALL R8
+800332ba		gs_log_appender_iterate	ICALL R2
+8003382e		gs_log_appender_register	ICALL R6
+8003386e		gs_log_appender_register	ICALL R8
+80032860		gs_log_console_append	ICALL R6
+80033110		gs_log_group_appender_iterate	ICALL R5
+80033124		gs_log_group_appender_iterate	ICALL R5
+8003339a		gs_log_group_iterate	ICALL R2
+800330e0		gs_log_history_iterator	ICALL R8
+8003318c		gs_log_process_appenders	ICALL R6
+80033ab0		gs_rtc_get_time	ICALL R8
+80033ad8		gs_rtc_set_time	ICALL R8
+8002b0a6		gs_uart_rx_isr	ICALL R8
+80034a2a		gs_vmem_info_by_name	ICALL R8
+80034a7c		gs_vmem_lock_by_name	ICALL R8
+80029de6		i2c_DSR	ICALL R8
+80029e62		i2c_DSR	ICALL R8
+800328e6		iter_log_appender_clear	ICALL R8
+80032d84		iter_print_appender	ICALL R8
+8001f4a6		service_dispatcher_task	ICALL R0
+8001f552		service_dispatcher_task	ICALL parameter
+
+resolved
+8003e8fa		__svfscanf_r	ICALL R8=>_strtol_r
+800268ae		cmd_rtc_get	ICALL R8=>fm33256b_rtc_get_time
+8002688c		cmd_rtc_set	ICALL R8=>fm33256b_rtc_set_time
+80021318		csp_service_handler	ICALL R8=>clock_set_time
+80021324		csp_service_handler	ICALL R8=>clock_get_time
+g		csp_sys_reboot	ICALL R12=>cpu_reset
+80021290	LAB_80021290	Global	ICALL R8=>memcpy
+80031648		gs_console_thread	ICALL R8=>gs_console_normal
+80032648		gs_hexdump_to_stream	ICALL R2=>print_disp_addrxx
+800326b8		gs_hexdump_to_stream	ICALL R2=>print_disp_addrxx

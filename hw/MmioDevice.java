@@ -42,6 +42,7 @@ public abstract class MmioDevice extends Device {
         public int value;
         public int offset;
         public AccessType at;
+        public final MmioRegion region;
 
         public enum AccessType {
             READ_ONLY,
@@ -49,16 +50,21 @@ public abstract class MmioDevice extends Device {
             READ_WRITE,
         }
 
-        public Register(int value, int offset, AccessType at) {
+        public Register(int value, int offset, AccessType at, MmioRegion region) {
             // this.name = name;
             this.value = value;
             this.offset = offset;
             this.at = at;
+            this.region = region;
         }
     }
 
     public Register newRegister(int offset, int value, Register.AccessType at) {
-        Register reg = new Register(value, offset, at);
+        return newRegister(offset, value, at, null);
+    }
+
+    Register newRegister(int offset, int value, Register.AccessType at, MmioRegion region) {
+        Register reg = new Register(value, offset, at, region);
         this.registersByOffset.put(offset, reg);
         return reg;
         // this.registersByName.put(name, reg);
@@ -237,37 +243,25 @@ public abstract class MmioDevice extends Device {
         regions.add(region);
     }
 
-    protected MmioRegion findRegion(int offset) {
-        for (MmioRegion child : regions) {
-            MmioRegion region = child.findRegion(offset);
-            if (region != null) {
-                return region;
-            }
-        }
-        return null;
-    }
-
     // protected abstract boolean onWrite(int offset, int value);
     protected boolean onWrite(int offset, int value) {
         Register r = registersByOffset.get(offset);
         if (r == null || r.at == AccessType.READ_ONLY) return false;
 
         r.value = value;
-        MmioRegion region = findRegion(offset);
-        if (region != null) {
-            region.afterWrite(offset - region.baseOffset, value);
+        if (r.region != null) {
+            r.region.afterWrite(offset - r.region.baseOffset, value);
         }
         return true;
     }
 
     protected Integer onRead(int offset) {
-        MmioRegion region = findRegion(offset);
-        if (region != null) {
-            region.beforeRead(offset - region.baseOffset);
-        }
         Register r = registersByOffset.get(offset);
         if (r == null || r.at == AccessType.WRITE_ONLY) return null;
 
+        if (r.region != null) {
+            r.region.beforeRead(offset - r.region.baseOffset);
+        }
         return r.value;
     }
 

@@ -2,3 +2,6 @@ log
 .vscode
 .config
 cg
+thesis/*/*
+__pycache__
+.codex

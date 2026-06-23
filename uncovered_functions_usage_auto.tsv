@@ -1,0 +1,56 @@
+target_address	target_name	field	store_address	store_function	field_use_address	field_use_function	icall_address	icall_text	context	kind
+8001ee04	gs_csp_can_rxdata_callback_isr	gs_can_set_extended_filter_mask.arg4	8001ed28	gs_csp_can_init2		can_mbox_rx	80028882	ICALL R6	uVar3 = (*(code *)PTR_gs_can_set_extended_filter_mask_8001ed94) (param_1,(uVar6 & 0x1f) << 0x13,0xf80000, PTR_gs_csp_can_rxdata_callback_isr_8001ed90,0); | (*(code *)*puVar1)(param_1,*(uint *)(param_2 * 0x10 + *(int *)(iVar2 * 8 + -0x2e400)) & 0x1fffffff,1,*(int *)(iVar2 * 8 + -0x2e400) + param_2 * 0x10 + 8, *(uint *)(param_2 * 0xc + iVar2 * 8 + -0x2e3ac) & 0xf,0,puVar1[1],param_3);	can_filter_callback_to_icall
+8001ee9c	gs_csp_i2c_get_buffer									no_usage_chain_found
+8001eeb0	gs_csp_i2c_rxdata_callback_isr									no_usage_chain_found
+8001f5e8	gs_csp_uptime_service_handler									no_usage_chain_found
+8001f610	gs_csp_reboot_service_handler									no_usage_chain_found
+8001f624	gs_csp_mem_free_service_handler									no_usage_chain_found
+8001f638	gs_csp_ps_service_handler									no_usage_chain_found
+8001f64c	gs_csp_ping_service_handler									no_usage_chain_found
+8001f660	gs_csp_cmp_service_handler									no_usage_chain_found
+8001f674	uptime	call_csp_packet_handler.arg2	8001f5ea	gs_csp_uptime_service_handler		call_csp_packet_handler	8001f5c8	ICALL R6	(*(code *)PTR_call_csp_packet_handler_8001f5f8)(param_1,PTR_uptime_8001f5f4); | (*param_2)(param_1,uVar1);	callback_arg_to_icall
+8001f6cc	memfree	call_csp_packet_handler.arg2	8001f626	gs_csp_mem_free_service_handler		call_csp_packet_handler	8001f5c8	ICALL R6	(*(code *)PTR_call_csp_packet_handler_8001f634)(param_1,PTR_memfree_8001f630); | (*param_2)(param_1,uVar1);	callback_arg_to_icall
+80020f80	csp_service_handler	call_csp_packet_handler.arg2	8001f662	gs_csp_cmp_service_handler		call_csp_packet_handler	8001f5c8	ICALL R6	(*(code *)PTR_call_csp_packet_handler_8001f670)(param_1,PTR_csp_service_handler_8001f66c); | (*param_2)(param_1,uVar1);	callback_arg_to_icall
+80020f80	csp_service_handler	call_csp_packet_handler.arg2	8001f64e	gs_csp_ping_service_handler		call_csp_packet_handler	8001f5c8	ICALL R6	(*(code *)PTR_call_csp_packet_handler_8001f65c)(param_1,PTR_csp_service_handler_8001f658); | (*param_2)(param_1,uVar1);	callback_arg_to_icall
+80020f80	csp_service_handler	call_csp_packet_handler.arg2	8001f63a	gs_csp_ps_service_handler		call_csp_packet_handler	8001f5c8	ICALL R6	(*(code *)PTR_call_csp_packet_handler_8001f648)(param_1,PTR_csp_service_handler_8001f644); | (*param_2)(param_1,uVar1);	callback_arg_to_icall
+80020f80	csp_service_handler	call_csp_packet_handler.arg2	8001f612	gs_csp_reboot_service_handler		call_csp_packet_handler	8001f5c8	ICALL R6	(*(code *)PTR_call_csp_packet_handler_8001f620)(param_1,PTR_csp_service_handler_8001f61c); | (*param_2)(param_1,uVar1);	callback_arg_to_icall
+80020f80	csp_service_handler	call_csp_packet_handler.arg2	8001f5fe	gs_csp_buf_free_service_handler		call_csp_packet_handler	8001f5c8	ICALL R6	(*(code *)PTR_call_csp_packet_handler_8001f60c)(param_1,PTR_csp_service_handler_8001f608); | (*param_2)(param_1,uVar1);	callback_arg_to_icall
+80021898	csp_can_tx	csp_iface_t.nexthop+8	8001ed08	gs_csp_can_init2		csp_send_direct	800206c6	ICALL R8	*(undefined **)(pbVar2 + 0x14) = puVar5; | if ((*(ushort *)(param_3 + 0xc) == 0 || uVar1 <= *(ushort *)(param_3 + 0xc)) && (uVar3 = (**(code **)(param_3 + 8))(param_3,param_2,param_4,0,*(code **)(param_3 + 8)), extraout_Z_00)) {	csp_iface_nexthop_to_icall
+80021dbc	csp_i2c_tx	csp_if_i2c.nexthop+8	00000054	csp_i2c_init		csp_send_direct	800206c6	ICALL R8	csp_if_i2c+8 = csp_i2c_tx | (*(code *)PTR_csp_iflist_add_80021d18)(DAT_80021d14); | if ((*(ushort *)(param_3 + 0xc) == 0 || uVar1 <= *(ushort *)(param_3 + 0xc)) && (uVar3 = (**(code **)(param_3 + 8))(param_3,param_2,param_4,0,*(code **)(param_3 + 8)), extraout_Z_00)) {	static_csp_iface_nexthop_to_icall
+80021e8c	csp_lo_tx	csp_if_lo.nexthop+8	00000090	csp_init		csp_send_direct	800206c6	ICALL R8	csp_if_lo+8 = csp_lo_tx | (*(code *)PTR_csp_iflist_add_80020a10)(DAT_80020a0c); | if ((*(ushort *)(param_3 + 0xc) == 0 || uVar1 <= *(ushort *)(param_3 + 0xc)) && (uVar3 = (**(code **)(param_3 + 8))(param_3,param_2,param_4,0,*(code **)(param_3 + 8)), extraout_Z_00)) {	static_csp_iface_nexthop_to_icall
+80021e8c	csp_lo_tx	csp_if_lo.nexthop+8	00000090	csp_init		csp_send_direct	800206c6	ICALL R8	csp_if_lo+8 = csp_lo_tx | (*(code *)PTR_csp_rtable_set_80020a14)(*puVar1,5,DAT_80020a0c,0xff); | if ((*(ushort *)(param_3 + 0xc) == 0 || uVar1 <= *(ushort *)(param_3 + 0xc)) && (uVar3 = (**(code **)(param_3 + 8))(param_3,param_2,param_4,0,*(code **)(param_3 + 8)), extraout_Z_00)) {	static_csp_iface_nexthop_to_icall
+80021e8c	csp_lo_tx	csp_if_lo.nexthop+8	00000090	csp_init		csp_send_direct	800206c6	ICALL R8	csp_if_lo+8 = csp_lo_tx | (*(code *)PTR_csp_rtable_set_80020a14)(0x20,5,DAT_80020a0c,0xff); | if ((*(ushort *)(param_3 + 0xc) == 0 || uVar1 <= *(ushort *)(param_3 + 0xc)) && (uVar3 = (**(code **)(param_3 + 8))(param_3,param_2,param_4,0,*(code **)(param_3 + 8)), extraout_Z_00)) {	static_csp_iface_nexthop_to_icall
+80026188	fm33256b_vmem_info									no_usage_chain_found
+80026290	fm33256b_vmem_read									no_usage_chain_found
+80030d70	command_stdio_set_result									no_usage_chain_found
+80030df4	command_execute									no_usage_chain_found
+80030e90	command_help									no_usage_chain_found
+800310cc	command_complete	stack:local_6c+0x2c	80031046	gs_command_complete		command_process	80030c0c	ICALL R8	local_40 = PTR_command_complete_8003109c; | iVar4 = (*(code *)param_1[0xb])(*piVar1,piVar1[1],0,param_1,(code *)param_1[0xb]);	stack_local_field_to_icall
+800310cc	command_complete	stack:local_6c+0x2c	80031040	gs_command_complete		command_process	80030c0c	ICALL R8	local_40 = PTR_command_complete_8003109c; | iVar4 = (*(code *)param_1[0xb])(*piVar1,piVar1[1],0,param_1,(code *)param_1[0xb]);	stack_local_field_to_icall
+80031374	gs_command_stdio_wait_for_key									no_usage_chain_found
+80031384	gs_command_stdio_flush									no_usage_chain_found
+80031884	command_io_cci_set_result									no_usage_chain_found
+800318c4	gs_console_cci_log									no_usage_chain_found
+8003193c	gs_console_cci									no_usage_chain_found
+800327a4	gs_log_console_append_get_info									no_usage_chain_found
+800328d0	iter_log_appender_clear	gs_log_appender_iterate.arg3	80032990	gs_log_cmd_log_appender_clear_handler		gs_log_appender_iterate	800332ba	ICALL R2	uVar1 = (*(code *)PTR_gs_log_appender_iterate_800329b4) (*(undefined4 *)(*(int *)(param_1 + 0xc) + 4),aiStack_24, PTR_iter_log_appender_clear_800329b0); | (*param_3)(param_2,*piVar2);	callback_arg_to_icall
+800328f2	iter_log_group_find	gs_log_group_iterate.arg3	80032930	gs_log_cmd_log_group_insert_handler		gs_log_group_iterate	8003339a	ICALL R2	uVar1 = (*(code *)PTR_gs_log_group_iterate_80032968) (*(undefined4 *)(*(int *)(param_1 + 0xc) + 4),&local_18, PTR_iter_log_group_find_80032964); | (*param_3)(param_2,*piVar2);	callback_arg_to_icall
+80032a24	appender_history_iter									no_usage_chain_found
+80032b34	gs_log_cmd_log_appender_clear_completer									no_usage_chain_found
+80032b40	gs_log_cmd_log_appender_hist_completer									no_usage_chain_found
+80032b4c	gs_log_cmd_log_appender_mask_completer									no_usage_chain_found
+80032b58	gs_log_cmd_log_appender_list_completer									no_usage_chain_found
+80032c50	gs_log_cmd_debug_completer									no_usage_chain_found
+80032c5c	gs_log_cmd_log_group_insert_completer									no_usage_chain_found
+80032c68	gs_log_cmd_log_group_mask_completer									no_usage_chain_found
+80032c74	gs_log_cmd_log_group_list_completer									no_usage_chain_found
+80032df8	iter_log_appender_completer	gs_log_appender_iterate.arg3	80032b0e	cmd_log_appender_completer		gs_log_appender_iterate	800332ba	ICALL R2	(*(code *)PTR_gs_log_appender_iterate_80032b30) (auStack_58,auStack_28,PTR_iter_log_appender_completer_80032b2c); | (*param_3)(param_2,*piVar2);	callback_arg_to_icall
+80032f4c	iter_log_completer	gs_log_group_iterate.arg3	80032c2a	cmd_log_group_completer		gs_log_group_iterate	8003339a	ICALL R2	(*(code *)PTR_gs_log_group_iterate_80032c4c) (auStack_58,auStack_28,PTR_iter_log_completer_80032c48); | (*param_3)(param_2,*piVar2);	callback_arg_to_icall
+80032f94	iter_print_group_appenders	gs_log_group_appender_iterate.arg3	80032e7a	iter_print_group		gs_log_group_appender_iterate	80033110	ICALL R5	(*(code *)PTR_gs_log_group_appender_iterate_80032f20) (param_2,auStack_40,PTR_iter_print_group_appenders_80032f1c); | (*param_3)(param_2,*puVar1);	callback_arg_to_icall
+80032f94	iter_print_group_appenders	gs_log_group_appender_iterate.arg3	80032e7a	iter_print_group		gs_log_group_appender_iterate	80033124	ICALL R5	(*(code *)PTR_gs_log_group_appender_iterate_80032f20) (param_2,auStack_40,PTR_iter_print_group_appenders_80032f1c); | (*param_3)(param_2,*puVar1);	callback_arg_to_icall
+800330a0	iter_set_level_mask	gs_log_group_iterate.arg3	80033476	gs_log_group_set_level_mask		gs_log_group_iterate	8003339a	ICALL R2	uVar1 = (*(code *)PTR_gs_log_group_iterate_8003348c) (param_1,&stack0xffffffec,PTR_iter_set_level_mask_80033488); | (*param_3)(param_2,*piVar2);	callback_arg_to_icall
+800330aa	iter_get_level_mask	gs_log_group_iterate.arg3	80033448	gs_log_group_get_level_mask		gs_log_group_iterate	8003339a	ICALL R2	uVar1 = (*(code *)PTR_gs_log_group_iterate_8003345c) (param_1,unaff_LR,PTR_iter_get_level_mask_80033458); | (*param_3)(param_2,*piVar2);	callback_arg_to_icall
+800330cc	gs_log_history_iterator	gs_log_appender_iterate.arg3	8003334c	gs_log_appender_history_iterate		gs_log_appender_iterate	800332ba	ICALL R2	(*(code *)PTR_gs_log_appender_iterate_8003335c) (param_1,&uStack_c,PTR_gs_log_history_iterator_80033358); | (*param_3)(param_2,*piVar2);	callback_arg_to_icall
+800330e4	iter_set_appender_level_mask	gs_log_appender_iterate.arg3	8003332a	gs_log_appender_set_level_mask		gs_log_appender_iterate	800332ba	ICALL R2	uVar1 = (*(code *)PTR_gs_log_appender_iterate_80033340) (param_1,&stack0xffffffec,PTR_iter_set_appender_level_mask_8003333c); | (*param_3)(param_2,*piVar2);	callback_arg_to_icall
+800330ee	iter_get_appender_level_mask	gs_log_appender_iterate.arg3	800332fc	gs_log_appender_get_level_mask		gs_log_appender_iterate	800332ba	ICALL R2	uVar1 = (*(code *)PTR_gs_log_appender_iterate_80033310) (param_1,unaff_LR,PTR_iter_get_appender_level_mask_8003330c); | (*param_3)(param_2,*piVar2);	callback_arg_to_icall
+800387f8	__sseek									no_usage_chain_found

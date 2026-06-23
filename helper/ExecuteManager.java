@@ -77,8 +77,9 @@ public final class ExecuteManager {
                     if (context.currentTaskName.compareTo(newTaskName) != 0) {
                         int currentTick = cpuState.getRAMValue(0x13a0);
                         logger.println(String.format("task switched: %s (current tickCount: %d)", newTaskName, currentTick), 6);
-                        taskManager.switchTask(context.currentTaskName, newTaskName);
+                        String oldTaskName = context.currentTaskName;
                         context.currentTaskName = newTaskName;
+                        taskManager.switchTask(oldTaskName, newTaskName);
                     }
                 }
                 return 0;
@@ -400,7 +401,10 @@ public final class ExecuteManager {
         //         return 0;
         //     }
             
-        if (logHelper.isInterestingInstr(instr, addr)) {
+        boolean containsUserop = instructionContainsUserop(instr);
+        boolean shouldStepPcode = logHelper.isInterestingInstr(instr, addr) || containsUserop || true;
+        boolean recordedUseropFlow = false;
+        if (shouldStepPcode) {
             thread.stepPcodeOp();
             frame = thread.getFrame();
             if (frame != null) {
@@ -433,6 +437,10 @@ public final class ExecuteManager {
                     Varnode[] inputs = op.getInputs();
                     Varnode output = op.getOutput();
                     thread.stepPcodeOp();
+                    if (op.getOpcode() == PcodeOp.CALLOTHER) {
+                        recordedUseropFlow |=
+                            dynamicFlowTracker.recordUseropFlow(instr, thread.getCounter(), op.toString());
+                    }
                     
                     // Fixed in local Ghidra
                     // if (mn.equals("CPC") && id == 6 && instr.getNumOperands() == 1) {
@@ -488,6 +496,9 @@ public final class ExecuteManager {
             thread.stepInstruction();
         }
         dynamicFlowTracker.recordComputedFlow(instr, thread.getCounter());
+        if (containsUserop && !recordedUseropFlow) {
+            dynamicFlowTracker.recordUseropFlow(instr, thread.getCounter(), "CALLOTHER");
+        }
         int sp = cpuState.getRegisterValue("SP");
         if (sp != old_sp) {
             logHelper.printStack();
@@ -498,5 +509,21 @@ public final class ExecuteManager {
 
     public void close() {
         dynamicFlowTracker.close();
+    }
+
+    private boolean instructionContainsUserop(Instruction instruction) {
+        if (instruction == null) {
+            return false;
+        }
+        PcodeOp[] ops = instruction.getPcode();
+        if (ops == null) {
+            return false;
+        }
+        for (PcodeOp op : ops) {
+            if (op.getOpcode() == PcodeOp.CALLOTHER) {
+                return true;
+            }
+        }
+        return false;
     }
 }

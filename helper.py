@@ -4,12 +4,15 @@ import argparse
 import subprocess
 from pathlib import Path
 
+from callgraph_diff import build_callgraph_diff
+
 ANALYZE_HEADLESS = "/home/fbtngus/ghidra-randev/build/dist/ghidra_12.0_DEV/support/analyzeHeadless"
 PROJECT_DIR = "/home/fbtngus/ghidra-projects"
 PROJECT_NAME = "RandevGhidra"
 SCRIPT_ROOT = "/home/fbtngus/ghidra-scripts"
 FIRMWARE_ROOT = "/home/fbtngus/ghidra-randev/build/dist"
 EMUL_SUFFIX = ".emul"
+CG_ROOT = Path(SCRIPT_ROOT) / "cg"
 
 parser = argparse.ArgumentParser()
 subparsers = parser.add_subparsers(dest="mode", required=True)
@@ -181,6 +184,42 @@ def run_callgraph(process_name):
     )
 
 
+def run_callgraph_diff(baseline_file, emul_file):
+    baseline_dot = CG_ROOT / baseline_file / "callgraph_static.dot"
+    emul_dot = CG_ROOT / emul_file / "callgraph_static.dot"
+    if not baseline_dot.exists():
+        raise SystemExit(f"Baseline call graph DOT not found: {baseline_dot}")
+    if not emul_dot.exists():
+        raise SystemExit(f"Emulated call graph DOT not found: {emul_dot}")
+
+    diff_dir = CG_ROOT / f"diff-{baseline_file}-vs-{emul_file}"
+    baseline_indirect_sites = CG_ROOT / baseline_file / "indirect_flow_sites.tsv"
+    emul_indirect_sites = CG_ROOT / emul_file / "indirect_flow_sites.tsv"
+    result = build_callgraph_diff(
+        baseline_dot,
+        emul_dot,
+        diff_dir,
+        baseline_indirect_sites,
+        emul_indirect_sites,
+    )
+    print(f"Diff DOT export: {result['dot']}")
+    print(f"Diff SVG export: {result['svg']}")
+    print(f"Diff summary export: {result['summary']}")
+    print(
+        "Diff edges: "
+        f"common={result['common_edges']} "
+        f"emul-only={result['emul_only_edges']} "
+        f"no-emul-only={result['no_emul_only_edges']}"
+    )
+    if "indirect_sites" in result:
+        print(
+            "Indirect coverage: "
+            f"covered={result['indirect_covered']}/{result['indirect_sites']} "
+            f"({result['indirect_coverage_percent']:.1f}%), "
+            f"excluded={result.get('indirect_excluded', 0)}"
+        )
+
+
 if args.mode == "list":
     execute_project_manager(["list"])
 elif args.mode == "del":
@@ -241,6 +280,7 @@ elif args.mode == "callgraph":
     run_callgraph(baseline_file)
     if project_file_exists(emul_file):
         run_callgraph(emul_file)
+        run_callgraph_diff(baseline_file, emul_file)
     else:
         print(f"Skipping emulated program call graph; project file not found: {emul_file}")
 elif args.mode == "run":

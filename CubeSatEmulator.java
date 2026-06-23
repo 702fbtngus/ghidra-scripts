@@ -6,7 +6,6 @@
 //@toolbar 
 //@runtime Java
 
-import java.io.File;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
@@ -14,19 +13,9 @@ import ghidra.app.emulator.AdaptedEmulator;
 import ghidra.app.emulator.EmulatorConfiguration;
 import ghidra.app.emulator.EmulatorHelper;
 import ghidra.app.script.GhidraScript;
-import ghidra.app.util.bin.ByteProvider;
-import ghidra.app.util.bin.RandomAccessByteProvider;
-import ghidra.app.util.bin.format.elf.ElfHeader;
 import ghidra.pcode.emu.PcodeEmulator;
 import ghidra.program.model.address.Address;
-import ghidra.program.model.address.AddressIterator;
-import ghidra.program.model.listing.Function;
-import ghidra.program.model.listing.FunctionIterator;
-import ghidra.program.model.listing.FunctionManager;
 import ghidra.program.model.listing.Program;
-import ghidra.program.model.symbol.Symbol;
-import ghidra.program.model.symbol.SymbolIterator;
-import ghidra.program.model.symbol.SymbolTable;
 import ghidra.pcode.emu.AbstractPcodeMachine;
 import hw.*;
 import helper.*;
@@ -248,100 +237,13 @@ public class CubeSatEmulator extends GhidraScript {
     }
 
     private Address resolveStartAddress() throws Exception {
-        Address entryPoint = resolveElfHeaderEntryPoint();
-        if (entryPoint != null) {
-            println("Resolved emulator start address from ELF header entry point: " + entryPoint, 6);
-            return entryPoint;
-        }
-
-        entryPoint = resolveNamedEntryPoint();
-        if (entryPoint != null) {
-            println("Resolved emulator start address from entry symbol: " + entryPoint, 6);
-            return entryPoint;
-        }
-
-        entryPoint = resolveFirstFunctionEntryPoint();
-        if (entryPoint != null) {
-            println("Resolved emulator start address from first function: " + entryPoint, 6);
-            return entryPoint;
-        }
-
-        entryPoint = resolveExternalEntryPoint();
-        if (entryPoint != null) {
-            println("Resolved emulator start address from external entry point: " + entryPoint, 6);
-            return entryPoint;
-        }
-
-        throw new IllegalStateException(
-            "Could not resolve emulator start address from ELF header, symbols, functions, or program entry points."
+        ProgramEntryResolver.ResolvedStartAddress resolved =
+            ProgramEntryResolver.resolveStartAddress(this, (message, detailLevel) -> println(message, detailLevel));
+        println(
+            "Resolved emulator start address from " + resolved.getSource() + ": " + resolved.getAddress(),
+            6
         );
-    }
-
-    private Address resolveElfHeaderEntryPoint() throws Exception {
-        String executablePath = currentProgram.getExecutablePath();
-        if (executablePath == null || executablePath.isEmpty()) {
-            return null;
-        }
-
-        File executable = new File(executablePath);
-        if (!executable.isFile()) {
-            println("Executable path is not readable, skipping ELF header entry: " + executablePath, 6);
-            return null;
-        }
-
-        try (ByteProvider provider = new RandomAccessByteProvider(executable)) {
-            ElfHeader elf = new ElfHeader(provider, msg -> println("ELF header warning: " + msg, 6));
-            long entry = elf.e_entry();
-            if (entry == 0) {
-                return null;
-            }
-            return toAddr(entry);
-        }
-    }
-
-    private Address resolveExternalEntryPoint() {
-        SymbolTable symbolTable = currentProgram.getSymbolTable();
-        AddressIterator entries = symbolTable.getExternalEntryPointIterator();
-        while (entries.hasNext()) {
-            Address address = entries.next();
-            if (isExecutableAddress(address)) {
-                return address;
-            }
-        }
-        return null;
-    }
-
-    private Address resolveNamedEntryPoint() {
-        SymbolTable symbolTable = currentProgram.getSymbolTable();
-        String[] names = new String[] {"entry", "_start", "start", "EntryPoint", "_EntryPoint"};
-        for (String name : names) {
-            SymbolIterator symbols = symbolTable.getSymbols(name);
-            while (symbols.hasNext()) {
-                Symbol symbol = symbols.next();
-                Address address = symbol.getAddress();
-                if (isExecutableAddress(address)) {
-                    return address;
-                }
-            }
-        }
-        return null;
-    }
-
-    private Address resolveFirstFunctionEntryPoint() {
-        FunctionManager functionManager = currentProgram.getFunctionManager();
-        FunctionIterator functions = functionManager.getFunctions(true);
-        while (functions.hasNext()) {
-            Function function = functions.next();
-            Address address = function.getEntryPoint();
-            if (isExecutableAddress(address)) {
-                return address;
-            }
-        }
-        return null;
-    }
-
-    private boolean isExecutableAddress(Address address) {
-        return address != null && currentProgram.getListing().getInstructionAt(address) != null;
+        return resolved.getAddress();
     }
 
     @Override
